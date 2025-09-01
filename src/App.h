@@ -1,8 +1,14 @@
 #pragma once
 
 #include <imgui.h>
+#include <glm/vec2.hpp>
 
-struct GLFWwindow;
+#include <cstdint>
+#include <vector>
+
+struct SDL_Window;
+struct SDL_Renderer;
+struct SDL_Texture;
 
 class App
 {
@@ -15,9 +21,14 @@ public:
 private:
 	static App *s_Instance;
 
-	GLFWwindow *m_window = nullptr;
+	SDL_Window *m_window = nullptr;
+	SDL_Renderer *m_renderer = nullptr;
 
-	bool m_show_demo_window = true;
-	bool m_show_another_window = false;
 	ImVec4 m_clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+	uint32_t m_width = 2560;
+	uint32_t m_height = 1440;
+	glm::vec2 m_viewport_dimensions = glm::vec2(256.0f, 256.0f);
+
+	std::vector<uint32_t> m_viewport_data;
+	SDL_Texture *m_viewport_texture = nullptr;
 };

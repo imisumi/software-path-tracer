@@ -23,6 +23,8 @@ endif()
 
 # Add vendor libraries
 add_subdirectory(vendor)
+add_subdirectory(vendor/sdl)
+add_subdirectory(vendor/glm)
 
 # Find packages BEFORE defining targets
 # find_package(fmt REQUIRED)
@@ -83,7 +85,18 @@ endif()
 # Link libraries AFTER target configuration
 target_link_libraries(${PROJECT_NAME} PRIVATE
     imgui
+	glm
 )
+
+# Copy SDL3 DLL to output directory on Windows
+if(WIN32)
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:SDL3::SDL3>
+        $<TARGET_FILE_DIR:${PROJECT_NAME}>
+        COMMENT "Copying SDL3 DLL to output directory"
+    )
+endif()
 # target_link_libraries(${PROJECT_NAME} PRIVATE
 #     fmt::fmt
 #     spdlog::spdlog

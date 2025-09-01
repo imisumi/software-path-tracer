@@ -1,12 +1,13 @@
 #include "App.h"
 #include <assert.h>
 #include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
+#include "imgui_impl_sdl3.h"
+#include "imgui_impl_sdlrenderer3.h"
 #include <stdio.h>
 #include <stdexcept>
+#include <vector>
 
-#include <GLFW/glfw3.h> // Will drag system OpenGL headers
+#include <SDL3/SDL.h>
 
 static void SetDarkThemeColors()
 {
@@ -127,9 +128,14 @@ static void SetDarkThemeColors()
 	colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.15f, 0.15f, 0.15f, 0.75f);		 // Modal m_window dim
 }
 
-static void glfw_error_callback(int error, const char *description)
+static void sdl_error_callback()
 {
-	fprintf(stderr, "GLFW Error %d: %s\n", error, description);
+	fprintf(stderr, "SDL Error: %s\n", SDL_GetError());
+}
+
+static uint32_t ToColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a)
+{
+	return (r << 24) | (g << 16) | (b << 8) | (a << 0);
 }
 
 App *App::s_Instance = nullptr;
@@ -138,21 +144,32 @@ App::App()
 {
 	assert(s_Instance == nullptr && "App already exists!");
 	s_Instance = this;
-	glfwSetErrorCallback(glfw_error_callback);
-	if (!glfwInit())
-		throw std::runtime_error("Failed to initialize GLFW");
+	// Setup SDL
+	// [If using SDL_MAIN_USE_CALLBACKS: all code below until the main loop starts would likely be your SDL_AppInit() function]
+	if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD))
+	{
+		printf("Error: SDL_Init(): %s\n", SDL_GetError());
+		throw std::runtime_error("Failed to initialize SDL");
+	}
 
-	const char *glsl_version = "#version 400";
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-
-	// Create window with graphics context
-	float main_scale = ImGui_ImplGlfw_GetContentScaleForMonitor(glfwGetPrimaryMonitor()); // Valid on GLFW 3.3+ only
-	m_window = glfwCreateWindow((int)(1280 * main_scale), (int)(800 * main_scale), "Dear ImGui GLFW+OpenGL3 example", nullptr, nullptr);
+	// Create window with SDL_Renderer graphics context
+	float main_scale = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
+	SDL_WindowFlags window_flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+	m_window = SDL_CreateWindow("Dear ImGui SDL3+SDL_Renderer example", (int)(m_width * main_scale), (int)(m_height * main_scale), window_flags);
 	if (m_window == nullptr)
-		throw std::runtime_error("Failed to create GLFW window");
-	glfwMakeContextCurrent(m_window);
-	glfwSwapInterval(1); // Enable vsync
+	{
+		printf("Error: SDL_CreateWindow(): %s\n", SDL_GetError());
+		throw std::runtime_error("Failed to create SDL m_window");
+	}
+	m_renderer = SDL_CreateRenderer(m_window, nullptr);
+	SDL_SetRenderVSync(m_renderer, 1);
+	if (m_renderer == nullptr)
+	{
+		SDL_Log("Error: SDL_CreateRenderer(): %s\n", SDL_GetError());
+		throw std::runtime_error("Failed to create SDL m_renderer");
+	}
+	SDL_SetWindowPosition(m_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+	SDL_ShowWindow(m_window);
 
 	// Setup Dear ImGui context
 	IMGUI_CHECKVERSION();
@@ -162,9 +179,6 @@ App::App()
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;	  // Enable Docking
-	io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;	  // Enable Multi-Viewport / Platform Windows
-	// io.ConfigViewportsNoAutoMerge = true;
-	// io.ConfigViewportsNoTaskBarIcon = true;
 
 	// Setup Dear ImGui style
 	ImGui::StyleColorsDark();
@@ -175,70 +189,118 @@ App::App()
 	ImGuiStyle &style = ImGui::GetStyle();
 	style.ScaleAllSizes(main_scale); // Bake a fixed style scale. (until we have a solution for dynamic style scaling, changing this requires resetting Style + calling this again)
 	style.FontScaleDpi = main_scale; // Set initial font scale. (using io.ConfigDpiScaleFonts=true makes this unnecessary. We leave both here for documentation purpose)
-#if GLFW_VERSION_MAJOR >= 3 && GLFW_VERSION_MINOR >= 3
-	io.ConfigDpiScaleFonts = true;	   // [Experimental] Automatically overwrite style.FontScaleDpi in Begin() when Monitor DPI changes. This will scale fonts but _NOT_ scale sizes/padding for now.
-	io.ConfigDpiScaleViewports = true; // [Experimental] Scale Dear ImGui and Platform Windows when Monitor DPI changes.
-#endif
-
-	// When viewports are enabled we tweak WindowRounding/WindowBg so platform windows can look identical to regular ones.
-	if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-	{
-		style.WindowRounding = 0.0f;
-		style.Colors[ImGuiCol_WindowBg].w = 1.0f;
-	}
+	// io.ConfigDpiScaleFonts = true;        // [Experimental] Automatically overwrite style.FontScaleDpi in Begin() when Monitor DPI changes. This will scale fonts but _NOT_ scale sizes/padding for now.
+	// io.ConfigDpiScaleViewports = true;    // [Experimental] Scale Dear ImGui and Platform Windows when Monitor DPI changes.
 
 	// Setup Platform/Renderer backends
-	ImGui_ImplGlfw_InitForOpenGL(m_window, true);
+	ImGui_ImplSDL3_InitForSDLRenderer(m_window, m_renderer);
+	ImGui_ImplSDLRenderer3_Init(m_renderer);
 
-	ImGui_ImplOpenGL3_Init(glsl_version);
+	m_viewport_texture = SDL_CreateTexture(m_renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STATIC, 256, 256);
+
+	// Initialize texture with checkerboard pattern
+	m_viewport_data.resize(256 * 256);
+	for (int y = 0; y < 256; ++y)
+	{
+		for (int x = 0; x < 256; ++x)
+		{
+			uint32_t color = ((x / 16) % 2 == (y / 16) % 2) ? 0xFF404040 : 0xFF808080;
+			m_viewport_data[y * 256 + x] = color;
+		}
+	}
+	SDL_UpdateTexture(m_viewport_texture, nullptr, m_viewport_data.data(), 256 * 4);
 }
 
 App::~App()
 {
 	// Cleanup
-	ImGui_ImplOpenGL3_Shutdown();
-	ImGui_ImplGlfw_Shutdown();
+	ImGui_ImplSDLRenderer3_Shutdown();
+	ImGui_ImplSDL3_Shutdown();
 	ImGui::DestroyContext();
 
-	glfwDestroyWindow(m_window);
-	glfwTerminate();
+	SDL_DestroyRenderer(m_renderer);
+	SDL_DestroyWindow(m_window);
+	SDL_Quit();
 }
 
 void App::run()
 {
+
 	ImGuiIO &io = ImGui::GetIO();
 	(void)io;
 	// Main loop
-	while (!glfwWindowShouldClose(m_window))
+	bool done = false;
+	while (!done)
 	{
-		glfwPollEvents();
-		if (glfwGetWindowAttrib(m_window, GLFW_ICONIFIED) != 0)
+		// Poll and handle events (inputs, window resize, etc.)
+		// You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
+		// - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
+		// - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
+		// Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
+		// [If using SDL_MAIN_USE_CALLBACKS: call ImGui_ImplSDL3_ProcessEvent() from your SDL_AppEvent() function]
+		SDL_Event event;
+		while (SDL_PollEvent(&event))
 		{
-			ImGui_ImplGlfw_Sleep(10);
+			ImGui_ImplSDL3_ProcessEvent(&event);
+			if (event.type == SDL_EVENT_QUIT)
+				done = true;
+			if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && event.window.windowID == SDL_GetWindowID(m_window))
+				done = true;
+		}
+
+		// [If using SDL_MAIN_USE_CALLBACKS: all code below would likely be your SDL_AppIterate() function]
+		if (SDL_GetWindowFlags(m_window) & SDL_WINDOW_MINIMIZED)
+		{
+			SDL_Delay(10);
 			continue;
 		}
 
 		// Start the Dear ImGui frame
-		ImGui_ImplOpenGL3_NewFrame();
-		ImGui_ImplGlfw_NewFrame();
+		ImGui_ImplSDLRenderer3_NewFrame();
+		ImGui_ImplSDL3_NewFrame();
 		ImGui::NewFrame();
 
 		ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport());
 
-		// 1. Show the big demo m_window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
-		if (m_show_demo_window)
-			ImGui::ShowDemoWindow(&m_show_demo_window);
+		{
+			ImGui::Begin("Viewport");
 
-		// 2. Show a simple m_window that we create ourselves. We use a Begin/End pair to create a named m_window.
+			ImVec2 content_region = ImGui::GetContentRegionAvail();
+
+			if (content_region.x != m_viewport_dimensions.x || content_region.y != m_viewport_dimensions.y)
+			{
+				m_viewport_dimensions = glm::vec2(content_region.x, content_region.y);
+
+				SDL_DestroyTexture(m_viewport_texture);
+				m_viewport_texture = SDL_CreateTexture(m_renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STATIC,
+													   (int)m_viewport_dimensions.x, (int)m_viewport_dimensions.y);
+
+				m_viewport_data.resize((int)(m_viewport_dimensions.x * m_viewport_dimensions.y));
+				for (int y = 0; y < (int)m_viewport_dimensions.y; ++y)
+				{
+					for (int x = 0; x < (int)m_viewport_dimensions.x; ++x)
+					{
+						uint8_t r = (float)x / m_viewport_dimensions.x * 255;
+						uint8_t g = (float)y / m_viewport_dimensions.y * 255;
+						uint8_t b = 0.2 * 255;
+						uint8_t a = 255;
+						m_viewport_data[y * (int)m_viewport_dimensions.x + x] = ToColor(r, g, b, a);
+					}
+				}
+				SDL_UpdateTexture(m_viewport_texture, nullptr, m_viewport_data.data(), (int)m_viewport_dimensions.x * 4);
+			}
+
+			ImGui::Image(m_viewport_texture, content_region);
+			ImGui::End();
+		}
+
 		{
 			static float f = 0.0f;
 			static int counter = 0;
 
-			ImGui::Begin("Hello, world!"); // Create a m_window called "Hello, world!" and append into it.
+			ImGui::Begin("Properties");
 
-			ImGui::Text("This is some useful text.");			 // Display some text (you can use a format strings too)
-			ImGui::Checkbox("Demo Window", &m_show_demo_window); // Edit bools storing our m_window open/close state
-			ImGui::Checkbox("Another Window", &m_show_another_window);
+			ImGui::Text("This is some useful text."); // Display some text (you can use a format strings too)
 
 			ImGui::SliderFloat("float", &f, 0.0f, 1.0f);			   // Edit 1 float using a slider from 0.0f to 1.0f
 			ImGui::ColorEdit3("clear color", (float *)&m_clear_color); // Edit 3 floats representing a color
@@ -252,36 +314,12 @@ void App::run()
 			ImGui::End();
 		}
 
-		// 3. Show another simple m_window.
-		if (m_show_another_window)
-		{
-			ImGui::Begin("Another Window", &m_show_another_window); // Pass a pointer to our bool variable (the m_window will have a closing button that will clear the bool when clicked)
-			ImGui::Text("Hello from another m_window!");
-			if (ImGui::Button("Close Me"))
-				m_show_another_window = false;
-			ImGui::End();
-		}
-
 		// Rendering
 		ImGui::Render();
-		int display_w, display_h;
-		glfwGetFramebufferSize(m_window, &display_w, &display_h);
-		glViewport(0, 0, display_w, display_h);
-		glClearColor(m_clear_color.x * m_clear_color.w, m_clear_color.y * m_clear_color.w, m_clear_color.z * m_clear_color.w, m_clear_color.w);
-		glClear(GL_COLOR_BUFFER_BIT);
-		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-		// Update and Render additional Platform Windows
-		// (Platform functions may change the current OpenGL context, so we save/restore it to make it easier to paste this code elsewhere.
-		//  For this specific demo app we could also call glfwMakeContextCurrent(m_window) directly)
-		if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-		{
-			GLFWwindow *backup_current_context = glfwGetCurrentContext();
-			ImGui::UpdatePlatformWindows();
-			ImGui::RenderPlatformWindowsDefault();
-			glfwMakeContextCurrent(backup_current_context);
-		}
-
-		glfwSwapBuffers(m_window);
+		SDL_SetRenderScale(m_renderer, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y);
+		SDL_SetRenderDrawColorFloat(m_renderer, m_clear_color.x, m_clear_color.y, m_clear_color.z, m_clear_color.w);
+		SDL_RenderClear(m_renderer);
+		ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), m_renderer);
+		SDL_RenderPresent(m_renderer);
 	}
 }
