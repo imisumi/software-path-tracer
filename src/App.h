@@ -5,6 +5,10 @@
 
 #include <cstdint>
 #include <vector>
+#include <memory>
+
+#include "renderer/Texture2D.h"
+#include "renderer/renderer.h"
 
 struct SDL_Window;
 struct SDL_Renderer;
@@ -22,7 +26,7 @@ private:
 	static App *s_Instance;
 
 	SDL_Window *m_window = nullptr;
-	SDL_Renderer *m_renderer = nullptr;
+	// SDL_Renderer *m_renderer = nullptr;
 
 	ImVec4 m_clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 	uint32_t m_width = 2560;
@@ -30,5 +34,6 @@ private:
 	glm::vec2 m_viewport_dimensions = glm::vec2(256.0f, 256.0f);
 
 	std::vector<uint32_t> m_viewport_data;
-	SDL_Texture *m_viewport_texture = nullptr;
+
+	Renderer m_renderer;
 };

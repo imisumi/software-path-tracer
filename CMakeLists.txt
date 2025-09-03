@@ -86,6 +86,7 @@ endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE
     imgui
 	glm
+	SDL3::SDL3
 )
 
 # Copy SDL3 DLL to output directory on Windows

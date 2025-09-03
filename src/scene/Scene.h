@@ -8,6 +8,9 @@
 class Scene
 {
 public:
+	Scene();
+	~Scene();
+
 private:
 	SphereData sphere_data;
 };

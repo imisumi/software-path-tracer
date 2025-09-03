@@ -7,6 +7,8 @@
 #include <stdexcept>
 #include <vector>
 
+#include "renderer/GraphicsContext.h"
+
 #include <SDL3/SDL.h>
 
 static void SetDarkThemeColors();
@@ -44,13 +46,8 @@ App::App()
 		printf("Error: SDL_CreateWindow(): %s\n", SDL_GetError());
 		throw std::runtime_error("Failed to create SDL m_window");
 	}
-	m_renderer = SDL_CreateRenderer(m_window, nullptr);
-	SDL_SetRenderVSync(m_renderer, 1);
-	if (m_renderer == nullptr)
-	{
-		SDL_Log("Error: SDL_CreateRenderer(): %s\n", SDL_GetError());
-		throw std::runtime_error("Failed to create SDL m_renderer");
-	}
+	GraphicsContext::init(m_window);
+
 	SDL_SetWindowPosition(m_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
 	SDL_ShowWindow(m_window);
 
@@ -72,26 +69,11 @@ App::App()
 	ImGuiStyle &style = ImGui::GetStyle();
 	style.ScaleAllSizes(main_scale); // Bake a fixed style scale. (until we have a solution for dynamic style scaling, changing this requires resetting Style + calling this again)
 	style.FontScaleDpi = main_scale; // Set initial font scale. (using io.ConfigDpiScaleFonts=true makes this unnecessary. We leave both here for documentation purpose)
-	// io.ConfigDpiScaleFonts = true;        // [Experimental] Automatically overwrite style.FontScaleDpi in Begin() when Monitor DPI changes. This will scale fonts but _NOT_ scale sizes/padding for now.
-	// io.ConfigDpiScaleViewports = true;    // [Experimental] Scale Dear ImGui and Platform Windows when Monitor DPI changes.
+									 // io.ConfigDpiScaleFonts = true;        // [Experimental] Automatically overwrite style.FontScaleDpi in Begin() when Monitor DPI changes. This will scale fonts but _NOT_ scale sizes/padding for now.
+									 // io.ConfigDpiScaleViewports = true;    // [Experimental] Scale Dear ImGui and Platform Windows when Monitor DPI changes.
 
-	// Setup Platform/Renderer backends
-	ImGui_ImplSDL3_InitForSDLRenderer(m_window, m_renderer);
-	ImGui_ImplSDLRenderer3_Init(m_renderer);
-
-	m_viewport_texture = SDL_CreateTexture(m_renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STATIC, 256, 256);
-
-	// Initialize texture with checkerboard pattern
-	m_viewport_data.resize(256 * 256);
-	for (int y = 0; y < 256; ++y)
-	{
-		for (int x = 0; x < 256; ++x)
-		{
-			uint32_t color = ((x / 16) % 2 == (y / 16) % 2) ? 0xFF404040 : 0xFF808080;
-			m_viewport_data[y * 256 + x] = color;
-		}
-	}
-	SDL_UpdateTexture(m_viewport_texture, nullptr, m_viewport_data.data(), 256 * 4);
+	ImGui_ImplSDL3_InitForSDLRenderer(m_window, GraphicsContext::getSDLRenderer());
+	ImGui_ImplSDLRenderer3_Init(GraphicsContext::getSDLRenderer());
 }
 
 App::~App()
@@ -101,7 +83,7 @@ App::~App()
 	ImGui_ImplSDL3_Shutdown();
 	ImGui::DestroyContext();
 
-	SDL_DestroyRenderer(m_renderer);
+	// SDL_DestroyRenderer(m_renderer);
 	SDL_DestroyWindow(m_window);
 	SDL_Quit();
 }
@@ -153,27 +135,12 @@ void App::run()
 			if (content_region.x != m_viewport_dimensions.x || content_region.y != m_viewport_dimensions.y)
 			{
 				m_viewport_dimensions = glm::vec2(content_region.x, content_region.y);
-
-				SDL_DestroyTexture(m_viewport_texture);
-				m_viewport_texture = SDL_CreateTexture(m_renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STATIC,
-													   (int)m_viewport_dimensions.x, (int)m_viewport_dimensions.y);
-
-				m_viewport_data.resize((int)(m_viewport_dimensions.x * m_viewport_dimensions.y));
-				for (int y = 0; y < (int)m_viewport_dimensions.y; ++y)
-				{
-					for (int x = 0; x < (int)m_viewport_dimensions.x; ++x)
-					{
-						uint8_t r = (float)x / m_viewport_dimensions.x * 255;
-						uint8_t g = (float)y / m_viewport_dimensions.y * 255;
-						uint8_t b = 0.2 * 255;
-						uint8_t a = 255;
-						m_viewport_data[y * (int)m_viewport_dimensions.x + x] = ToColor(r, g, b, a);
-					}
-				}
-				SDL_UpdateTexture(m_viewport_texture, nullptr, m_viewport_data.data(), (int)m_viewport_dimensions.x * 4);
 			}
 
-			ImGui::Image(m_viewport_texture, content_region);
+			m_renderer.on_resize((int)m_viewport_dimensions.x, (int)m_viewport_dimensions.y);
+			m_renderer.render();
+
+			ImGui::Image(m_renderer.get_texture().get()->get_texture(), content_region);
 			ImGui::End();
 		}
 
@@ -188,22 +155,23 @@ void App::run()
 			ImGui::SliderFloat("float", &f, 0.0f, 1.0f);			   // Edit 1 float using a slider from 0.0f to 1.0f
 			ImGui::ColorEdit3("clear color", (float *)&m_clear_color); // Edit 3 floats representing a color
 
-			if (ImGui::Button("Button")) // Buttons return true when clicked (most widgets return true when edited/activated)
-				counter++;
 			ImGui::SameLine();
 			ImGui::Text("counter = %d", counter);
 
 			ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+
+			ImGui::Text("Viewport size: %d x %d", m_renderer.get_texture()->get_width(), m_renderer.get_texture()->get_height());
+
 			ImGui::End();
 		}
 
 		// Rendering
 		ImGui::Render();
-		SDL_SetRenderScale(m_renderer, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y);
-		SDL_SetRenderDrawColorFloat(m_renderer, m_clear_color.x, m_clear_color.y, m_clear_color.z, m_clear_color.w);
-		SDL_RenderClear(m_renderer);
-		ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), m_renderer);
-		SDL_RenderPresent(m_renderer);
+		SDL_SetRenderScale(GraphicsContext::getSDLRenderer(), io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y);
+		SDL_SetRenderDrawColorFloat(GraphicsContext::getSDLRenderer(), m_clear_color.x, m_clear_color.y, m_clear_color.z, m_clear_color.w);
+		SDL_RenderClear(GraphicsContext::getSDLRenderer());
+		ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), GraphicsContext::getSDLRenderer());
+		SDL_RenderPresent(GraphicsContext::getSDLRenderer());
 	}
 }
 
