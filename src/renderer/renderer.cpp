@@ -6,6 +6,8 @@
 #include <execution>
 #include <numeric>
 
+#include <glm/glm.hpp>
+
 #include <SDL3/SDL.h>
 
 void Renderer::on_resize(uint32_t width, uint32_t height)
@@ -105,6 +107,13 @@ void Renderer::on_resize(uint32_t width, uint32_t height)
 // 	m_texture->set_data(m_data);
 // }
 
+float intersect_sphere(const glm::vec3 &O, const glm::vec3 &D, const glm::vec3 &C, float r)
+{
+	//  |P - C|² = r²
+	float t = -1.0f;
+	return t;
+}
+
 void Renderer::render()
 {
 	const uint32_t width = m_texture->get_width();
@@ -123,15 +132,37 @@ void Renderer::render()
 
 uint32_t Renderer::per_pixel(glm::vec2 uv) const
 {
-	const uint8_t r = (uint8_t)((float)uv.x * 255);
-	const uint8_t g = (uint8_t)((float)uv.y * 255);
-	const uint8_t b = (uint8_t)(0.2f * 255);
-	const uint8_t a = 255;
+    const glm::vec3 O(0.0f, 0.0f, 0.0f);  // Ray origin
+    const glm::vec3 D(uv.x, uv.y, -1.0f); // Ray direction (can be unnormalized)
+    const glm::vec3 C(0.0f, 0.0f, -5.0f); // Sphere center
+    const float r = 1.0f;                  // Sphere radius
 
-
-
-
-
-	
-	return (r << 24) | (g << 16) | (b << 8) | (a << 0);
+    // Algebraic method from README
+    glm::vec3 L = O - C;                   // Vector from sphere center to ray origin
+    float a = glm::dot(D, D);              // |D|²
+    float b = 2.0f * glm::dot(L, D);       // 2L·D
+    float c = glm::dot(L, L) - r * r;      // |L|² - r²
+    
+    float discriminant = b * b - 4 * a * c;
+    if (discriminant < 0)
+        return 0xff0000ff;                 // No intersection
+        
+    float sqrt_discriminant = sqrt(discriminant);
+    float t0 = (-b - sqrt_discriminant) / (2 * a);
+    float t1 = (-b + sqrt_discriminant) / (2 * a);
+    
+    // Choose nearest positive intersection
+    float t = (t0 > 0) ? t0 : t1;
+    if (t < 0)
+        return 0xff0000ff;
+        
+    glm::vec3 P = O + t * D;
+    glm::vec3 N = glm::normalize(P - C);
+    
+    const uint8_t r_col = (uint8_t)((N.x + 1.0f) * 0.5f * 255);
+    const uint8_t g_col = (uint8_t)((N.y + 1.0f) * 0.5f * 255);
+    const uint8_t b_col = (uint8_t)((N.z + 1.0f) * 0.5f * 255);
+    const uint8_t a_col = 255;
+    
+    return (r_col << 24) | (g_col << 16) | (b_col << 8) | (a_col << 0);
 }
