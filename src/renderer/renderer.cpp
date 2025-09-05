@@ -10,6 +10,8 @@
 
 #include <SDL3/SDL.h>
 
+#include "scene/Scene.h"
+
 void Renderer::on_resize(uint32_t width, uint32_t height)
 {
 	if (m_texture)
@@ -114,7 +116,7 @@ float intersect_sphere(const glm::vec3 &O, const glm::vec3 &D, const glm::vec3 &
 	return t;
 }
 
-void Renderer::render()
+void Renderer::render(std::shared_ptr<class Scene> scene)
 {
 	const uint32_t width = m_texture->get_width();
 	const uint32_t height = m_texture->get_height();
@@ -124,45 +126,45 @@ void Renderer::render()
 		for (uint32_t x = 0; x < width; ++x)
 		{
 			glm::vec2 pixel_coord = glm::vec2((float)x / width, v) * 2.0f - 1.0f;
-			m_data[y * width + x] = per_pixel(pixel_coord);
+			m_data[y * width + x] = per_pixel(scene, pixel_coord);
 		}
 	}
 	m_texture->set_data(m_data);
 }
 
-uint32_t Renderer::per_pixel(glm::vec2 uv) const
+uint32_t Renderer::per_pixel(std::shared_ptr<class Scene> scene, glm::vec2 uv) const
 {
-    const glm::vec3 O(0.0f, 0.0f, 0.0f);  // Ray origin
-    const glm::vec3 D(uv.x, uv.y, -1.0f); // Ray direction (can be unnormalized)
-    const glm::vec3 C(0.0f, 0.0f, -5.0f); // Sphere center
-    const float r = 1.0f;                  // Sphere radius
+	glm::vec3 O(0.0f, 0.0f, 0.0f);																				 // Ray origin
+	glm::vec3 D(uv.x, uv.y, 1.0f);																				 // Ray direction (can be unnormalized)
+	glm::vec3 C(scene->get_sphere_data().cx[0], scene->get_sphere_data().cy[0], scene->get_sphere_data().cz[0]); // Sphere center
+	float r = scene->get_sphere_data().radii[0];																 // Sphere radius
 
-    // Algebraic method from README
-    glm::vec3 L = O - C;                   // Vector from sphere center to ray origin
-    float a = glm::dot(D, D);              // |D|²
-    float b = 2.0f * glm::dot(L, D);       // 2L·D
-    float c = glm::dot(L, L) - r * r;      // |L|² - r²
-    
-    float discriminant = b * b - 4 * a * c;
-    if (discriminant < 0)
-        return 0xff0000ff;                 // No intersection
-        
-    float sqrt_discriminant = sqrt(discriminant);
-    float t0 = (-b - sqrt_discriminant) / (2 * a);
-    float t1 = (-b + sqrt_discriminant) / (2 * a);
-    
-    // Choose nearest positive intersection
-    float t = (t0 > 0) ? t0 : t1;
-    if (t < 0)
-        return 0xff0000ff;
-        
-    glm::vec3 P = O + t * D;
-    glm::vec3 N = glm::normalize(P - C);
-    
-    const uint8_t r_col = (uint8_t)((N.x + 1.0f) * 0.5f * 255);
-    const uint8_t g_col = (uint8_t)((N.y + 1.0f) * 0.5f * 255);
-    const uint8_t b_col = (uint8_t)((N.z + 1.0f) * 0.5f * 255);
-    const uint8_t a_col = 255;
-    
-    return (r_col << 24) | (g_col << 16) | (b_col << 8) | (a_col << 0);
+	// Algebraic method from README
+	glm::vec3 L = O - C;			  // Vector from sphere center to ray origin
+	float a = glm::dot(D, D);		  // |D|²
+	float b = 2.0f * glm::dot(L, D);  // 2L·D
+	float c = glm::dot(L, L) - r * r; // |L|² - r²
+
+	float discriminant = b * b - 4 * a * c;
+	if (discriminant < 0)
+		return 0xff0000ff; // No intersection
+
+	float sqrt_discriminant = sqrt(discriminant);
+	float t0 = (-b - sqrt_discriminant) / (2 * a);
+	float t1 = (-b + sqrt_discriminant) / (2 * a);
+
+	// Choose nearest positive intersection
+	float t = (t0 > 0) ? t0 : t1;
+	if (t < 0)
+		return 0xff0000ff;
+
+	glm::vec3 P = O + t * D;
+	glm::vec3 N = glm::normalize(P - C);
+
+	const uint8_t r_col = (uint8_t)((N.x + 1.0f) * 0.5f * 255);
+	const uint8_t g_col = (uint8_t)((N.y + 1.0f) * 0.5f * 255);
+	const uint8_t b_col = (uint8_t)((N.z + 1.0f) * 0.5f * 255);
+	const uint8_t a_col = 255;
+
+	return (r_col << 24) | (g_col << 16) | (b_col << 8) | (a_col << 0);
 }

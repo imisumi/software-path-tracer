@@ -36,4 +36,5 @@ private:
 	std::vector<uint32_t> m_viewport_data;
 
 	Renderer m_renderer;
+	std::shared_ptr<class Scene> m_scene;
 };

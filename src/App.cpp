@@ -11,6 +11,8 @@
 
 #include <SDL3/SDL.h>
 
+#include "scene/Scene.h"
+
 static void SetDarkThemeColors();
 
 static void sdl_error_callback()
@@ -74,6 +76,11 @@ App::App()
 
 	ImGui_ImplSDL3_InitForSDLRenderer(m_window, GraphicsContext::getSDLRenderer());
 	ImGui_ImplSDLRenderer3_Init(GraphicsContext::getSDLRenderer());
+
+	{
+		m_scene = std::make_shared<Scene>();
+		m_scene->add_sphere(glm::vec3(0.0f, 0.0f, 5.0f), 1.0f);
+	}
 }
 
 App::~App()
@@ -138,7 +145,7 @@ void App::run()
 			}
 
 			m_renderer.on_resize((int)m_viewport_dimensions.x, (int)m_viewport_dimensions.y);
-			m_renderer.render();
+			m_renderer.render(m_scene);
 
 			ImGui::Image(m_renderer.get_texture().get()->get_texture(), content_region);
 			ImGui::End();
@@ -161,6 +168,26 @@ void App::run()
 			ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
 
 			ImGui::Text("Viewport size: %d x %d", m_renderer.get_texture()->get_width(), m_renderer.get_texture()->get_height());
+
+			// spheres
+			const SphereData &sphere_data = m_scene->get_sphere_data();
+			ImGui::Text("Spheres: %d", sphere_data.size());
+			for (size_t i = 0; i < sphere_data.size(); ++i)
+			{
+				ImGui::PushID((int)i);
+				ImGui::Text("Sphere %d", (int)i);
+				float center[3] = {sphere_data.cx[i], sphere_data.cy[i], sphere_data.cz[i]};
+				if (ImGui::DragFloat3("Center", center, 0.1f))
+				{
+					m_scene->update_sphere(i, glm::vec3(center[0], center[1], center[2]), sphere_data.radii[i], sphere_data.material_indices[i]);
+				}
+				float radius = sphere_data.radii[i];
+				if (ImGui::DragFloat("Radius", &radius, 0.1f, 0.0f, 100.0f))
+				{
+					m_scene->update_sphere(i, glm::vec3(center[0], center[1], center[2]), radius, sphere_data.material_indices[i]);
+				}
+				ImGui::PopID();
+			}
 
 			ImGui::End();
 		}

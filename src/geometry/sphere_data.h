@@ -4,7 +4,9 @@
 
 struct SphereData
 {
-	std::vector<glm::vec3> centers;
+	std::vector<float> cx;
+	std::vector<float> cy;
+	std::vector<float> cz;
 	std::vector<float> radii;
 	std::vector<uint32_t> material_indices;
 
@@ -12,7 +14,8 @@ struct SphereData
 	void remove_sphere(uint32_t index);
 	void clear();
 	void reserve(size_t count);
+	void update_sphere(uint32_t index, glm::vec3 center, float radius, uint32_t material_index);
 
-	size_t size() const { return centers.size(); }
-	bool is_empty() const { return centers.empty(); }
+	size_t size() const { return cx.size(); }
+	bool is_empty() const { return cx.empty(); }
 };

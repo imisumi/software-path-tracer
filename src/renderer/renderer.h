@@ -13,9 +13,9 @@ public:
 	Renderer() = default;
 
 	void on_resize(uint32_t width, uint32_t height);
-	void render();
+	void render(std::shared_ptr<class Scene> scene);
 
-	uint32_t per_pixel(glm::vec2 uv) const;
+	uint32_t per_pixel(std::shared_ptr<class Scene> scene, glm::vec2 uv) const;
 	const std::unique_ptr<Texture2D> &get_texture() const { return m_texture; }
 
 private:
