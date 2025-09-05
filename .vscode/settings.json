@@ -1,0 +1,5 @@
+{
+    "cmake.environment": {
+        "CMAKE_TOOLCHAIN_FILE": "/Users/imisumi/dev/vcpkg/scripts/buildsystems/vcpkg.cmake"
+    }
+}

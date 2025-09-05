@@ -13,10 +13,8 @@ add_library(imgui STATIC
 
 target_include_directories(imgui PUBLIC
     imgui/
-    imgui/backends/
-    sdl/include/
-)
+    imgui/backends/)
 
-target_link_libraries(imgui PUBLIC
+target_link_libraries(imgui PRIVATE
     SDL3::SDL3
 )

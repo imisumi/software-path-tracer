@@ -1,6 +1,16 @@
 # Simple C++ CMakeLists.txt Template - Explicit Files
 cmake_minimum_required(VERSION 3.16)
 
+# Check for toolchain file - use env variable or error
+if(NOT CMAKE_TOOLCHAIN_FILE)
+    if(DEFINED ENV{CMAKE_TOOLCHAIN_FILE})
+        set(CMAKE_TOOLCHAIN_FILE "$ENV{CMAKE_TOOLCHAIN_FILE}" CACHE STRING "")
+        message(STATUS "Using toolchain file from environment: ${CMAKE_TOOLCHAIN_FILE}")
+    else()
+        message(FATAL_ERROR "CMAKE_TOOLCHAIN_FILE environment variable is not set. Please set it to point to your vcpkg toolchain file.")
+    endif()
+endif()
+
 project(MyApp VERSION 1.0.0)
 
 # Set C++ standard
@@ -21,14 +31,16 @@ else()
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# Add vendor libraries
-add_subdirectory(vendor)
-add_subdirectory(vendor/sdl)
-add_subdirectory(vendor/glm)
-
 # Find packages BEFORE defining targets
 # find_package(fmt REQUIRED)
 # find_package(spdlog REQUIRED)
+
+find_package(SDL3 CONFIG REQUIRED)
+
+# Add vendor libraries
+add_subdirectory(vendor)
+# add_subdirectory(vendor/sdl)
+add_subdirectory(vendor/glm)
 
 # Recursively find all source files in src/
 file(GLOB_RECURSE SOURCES
@@ -84,9 +96,10 @@ endif()
 
 # Link libraries AFTER target configuration
 target_link_libraries(${PROJECT_NAME} PRIVATE
+	SDL3::SDL3
     imgui
 	glm
-	SDL3::SDL3
+	# SDL3::SDL3
 )
 
 # Copy SDL3 DLL to output directory on Windows
