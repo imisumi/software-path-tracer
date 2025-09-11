@@ -1,15 +1,19 @@
 # Simple C++ CMakeLists.txt Template - Explicit Files
 cmake_minimum_required(VERSION 3.16)
 
+
+# C:\Users\ichir\Documents\vcpkg
+# set(CMAKE_TOOLCHAIN_FILE "C:\\Users/ichir/Documents/vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
+
 # Check for toolchain file - use env variable or error
-if(NOT CMAKE_TOOLCHAIN_FILE)
-    if(DEFINED ENV{CMAKE_TOOLCHAIN_FILE})
-        set(CMAKE_TOOLCHAIN_FILE "$ENV{CMAKE_TOOLCHAIN_FILE}" CACHE STRING "")
-        message(STATUS "Using toolchain file from environment: ${CMAKE_TOOLCHAIN_FILE}")
-    else()
-        message(FATAL_ERROR "CMAKE_TOOLCHAIN_FILE environment variable is not set. Please set it to point to your vcpkg toolchain file.")
-    endif()
-endif()
+# if(NOT CMAKE_TOOLCHAIN_FILE)
+#     if(DEFINED ENV{CMAKE_TOOLCHAIN_FILE})
+#         set(CMAKE_TOOLCHAIN_FILE "$ENV{CMAKE_TOOLCHAIN_FILE}" CACHE STRING "")
+#         message(STATUS "Using toolchain file from environment: ${CMAKE_TOOLCHAIN_FILE}")
+#     else()
+#         message(FATAL_ERROR "CMAKE_TOOLCHAIN_FILE environment variable is not set. Please set it to point to your vcpkg toolchain file.")
+#     endif()
+# endif()
 
 project(MyApp VERSION 1.0.0)
 
@@ -36,6 +40,7 @@ endif()
 # find_package(spdlog REQUIRED)
 
 find_package(SDL3 CONFIG REQUIRED)
+find_package(hwy CONFIG REQUIRED)
 
 # Add vendor libraries
 add_subdirectory(vendor)
@@ -99,6 +104,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 	SDL3::SDL3
     imgui
 	glm
+	hwy::hwy
 	# SDL3::SDL3
 )
 

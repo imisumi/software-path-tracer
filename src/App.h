@@ -7,8 +7,7 @@
 #include <vector>
 #include <memory>
 
-#include "renderer/Texture2D.h"
-#include "renderer/renderer.h"
+#include "renderer/RenderTargetFactory.h"
 
 struct SDL_Window;
 struct SDL_Renderer;
@@ -35,6 +34,7 @@ private:
 
 	std::vector<uint32_t> m_viewport_data;
 
-	Renderer m_renderer;
+	std::unique_ptr<RenderTarget> m_render_target;
 	std::shared_ptr<class Scene> m_scene;
+	RenderTargetFactory::Type m_render_target_type = RenderTargetFactory::Type::CPU;
 };

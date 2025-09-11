@@ -8,6 +8,9 @@
 #include <vector>
 
 #include "renderer/GraphicsContext.h"
+#include "renderer/renderer.h"
+#include "renderer/CPURenderTarget.h"
+// #include "renderer/CPUSIMDRenderTarget.h"
 
 #include <SDL3/SDL.h>
 
@@ -80,6 +83,11 @@ App::App()
 	{
 		m_scene = std::make_shared<Scene>();
 		m_scene->add_sphere(glm::vec3(0.0f, 0.0f, 5.0f), 1.0f);
+		m_scene->add_sphere(glm::vec3(2.0f, 0.0f, 7.0f), 1.0f);
+		m_scene->add_sphere(glm::vec3(0.0f, -100.0f, 7.0f), 99.0f);
+
+		// Create render target with initial size
+		m_render_target = RenderTargetFactory::create(m_render_target_type, 256, 256);
 	}
 }
 
@@ -102,6 +110,7 @@ void App::run()
 	(void)io;
 	// Main loop
 	bool done = false;
+	uint32_t frame = 1;
 	while (!done)
 	{
 		// Poll and handle events (inputs, window resize, etc.)
@@ -142,12 +151,26 @@ void App::run()
 			if (content_region.x != m_viewport_dimensions.x || content_region.y != m_viewport_dimensions.y)
 			{
 				m_viewport_dimensions = glm::vec2(content_region.x, content_region.y);
+
+				// Recreate render target with new size
+				m_render_target = RenderTargetFactory::create(m_render_target_type,
+															  (int)m_viewport_dimensions.x,
+															  (int)m_viewport_dimensions.y);
 			}
 
-			m_renderer.on_resize((int)m_viewport_dimensions.x, (int)m_viewport_dimensions.y);
-			m_renderer.render(m_scene);
+			// Use static renderer with render target
+			Renderer::render(*m_scene, *m_render_target, frame);
+			frame++;
 
-			ImGui::Image(m_renderer.get_texture().get()->get_texture(), content_region);
+			// Display texture - try both CPU implementations
+			if (auto *cpu_target = dynamic_cast<CPURenderTarget *>(m_render_target.get()))
+			{
+				ImGui::Image(cpu_target->getTexture().get()->get_texture(), content_region);
+			}
+			// else if (auto *simd_target = dynamic_cast<CPUSIMDRenderTarget *>(m_render_target.get()))
+			// {
+			// 	ImGui::Image(simd_target->getTexture().get()->get_texture(), content_region);
+			// }
 			ImGui::End();
 		}
 
@@ -167,7 +190,23 @@ void App::run()
 
 			ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
 
-			ImGui::Text("Viewport size: %d x %d", m_renderer.get_texture()->get_width(), m_renderer.get_texture()->get_height());
+			ImGui::Text("Viewport size: %d x %d", m_render_target->getWidth(), m_render_target->getHeight());
+
+			// Render target selection for easy comparison
+			ImGui::Separator();
+			ImGui::Text("Renderer Backend:");
+			const char *render_types[] = {"CPU", "CPU SIMD"};
+			int current_type = static_cast<int>(m_render_target_type);
+
+			if (ImGui::Combo("Backend", &current_type, render_types, 2))
+			{
+				m_render_target_type = static_cast<RenderTargetFactory::Type>(current_type);
+				// Recreate render target with new type
+				m_render_target = RenderTargetFactory::create(m_render_target_type,
+															  m_render_target->getWidth(),
+															  m_render_target->getHeight());
+				ImGui::Text("Switched to: %s", RenderTargetFactory::toString(m_render_target_type));
+			}
 
 			// spheres
 			const SphereData &sphere_data = m_scene->get_sphere_data();

@@ -186,3 +186,22 @@ function rayIntersectSphere(origin, direction, center, radius):
     
     return [t1, t2]  // Filter for t >= 0 as needed
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Temp
+
