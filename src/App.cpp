@@ -10,11 +10,22 @@
 #include "renderer/GraphicsContext.h"
 #include "renderer/renderer.h"
 #include "renderer/CPURenderTarget.h"
+#include "renderer/simd/SimdRenderTarget.h"
+#include "renderer/embree/EmbreeRenderTarget.h"
 // #include "renderer/CPUSIMDRenderTarget.h"
 
 #include <SDL3/SDL.h>
 
 #include "scene/Scene.h"
+
+#include <embree4/rtcore.h>
+
+// Cross-platform SIMD includes
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#include <xmmintrin.h>
+#include <pmmintrin.h>
+#define HAS_X86_SIMD 1
+#endif
 
 static void SetDarkThemeColors();
 
@@ -88,6 +99,68 @@ App::App()
 
 		// Create render target with initial size
 		m_render_target = RenderTargetFactory::create(m_render_target_type, 256, 256);
+
+		// Enable fast floating point modes for better Embree performance (x86/x64 only)
+#ifdef HAS_X86_SIMD
+		_MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
+		_MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+#endif
+
+		m_scene->device = rtcNewDevice("verbose=1,threads=0");
+		if (!m_scene->device)
+		{
+			throw std::runtime_error("Failed to create Embree device");
+		}
+
+		m_scene->scene = rtcNewScene(m_scene->device);
+		if (!m_scene->scene)
+		{
+			throw std::runtime_error("Failed to create Embree scene");
+		}
+		RTCGeometry geom = rtcNewGeometry(m_scene->device, RTC_GEOMETRY_TYPE_SPHERE_POINT);
+
+		struct Sphere
+		{
+			float x, y, z; // center
+			float radius;
+		};
+
+		std::vector<Sphere> spheres = {
+			{0.0f, -102.0f, 5.0f, 100.0f}, // Sphere at origin, radius 100
+			{0.0f, -1.0f, 5.0f, 1.0f},
+		};
+
+		int dims = 5;
+		for (int x = -dims; x <= dims; x += 2)
+		{
+			for (int y = -dims; y <= dims; y += 2)
+			{
+				spheres.push_back({(float)x, (float)y, 10.0f, 0.5f});
+			}
+		}
+
+		// Set vertex buffer (sphere centers and radii)
+		// Format: x, y, z, radius for each sphere
+		float *vb = (float *)rtcSetNewGeometryBuffer(geom, RTC_BUFFER_TYPE_VERTEX, 0,
+													 RTC_FORMAT_FLOAT4, 4 * sizeof(float), spheres.size());
+
+		for (size_t i = 0; i < spheres.size(); i++)
+		{
+			vb[i * 4 + 0] = spheres[i].x;	   // x
+			vb[i * 4 + 1] = spheres[i].y;	   // y
+			vb[i * 4 + 2] = spheres[i].z;	   // z
+			vb[i * 4 + 3] = spheres[i].radius; // radius
+		}
+
+		// Finalize geometry
+		rtcCommitGeometry(geom);
+
+		// Attach geometry to scene
+		unsigned int geomID = rtcAttachGeometry(m_scene->scene, geom);
+		rtcReleaseGeometry(geom);
+
+		// Commit scene (builds acceleration structure)
+		rtcCommitScene(m_scene->scene);
 	}
 }
 
@@ -147,10 +220,30 @@ void App::run()
 			ImGui::Begin("Viewport");
 
 			ImVec2 content_region = ImGui::GetContentRegionAvail();
-
-			if (content_region.x != m_viewport_dimensions.x || content_region.y != m_viewport_dimensions.y)
+			glm::vec2 new_viewport_dimensions;
+			
+			// Calculate viewport dimensions based on mode
+			if (m_viewport_mode == ViewportMode::WINDOW_DIMENSIONS)
 			{
-				m_viewport_dimensions = glm::vec2(content_region.x, content_region.y);
+				new_viewport_dimensions = glm::vec2(content_region.x, content_region.y);
+			}
+			else
+			{
+				// Custom texture sizes
+				int custom_size = 256;
+				switch (m_viewport_mode)
+				{
+					case ViewportMode::CUSTOM_SIZE_256: custom_size = 256; break;
+					case ViewportMode::CUSTOM_SIZE_512: custom_size = 512; break;
+					case ViewportMode::CUSTOM_SIZE_1024: custom_size = 1024; break;
+					default: custom_size = 256; break;
+				}
+				new_viewport_dimensions = glm::vec2(custom_size, custom_size);
+			}
+
+			if (new_viewport_dimensions.x != m_viewport_dimensions.x || new_viewport_dimensions.y != m_viewport_dimensions.y)
+			{
+				m_viewport_dimensions = new_viewport_dimensions;
 
 				// Recreate render target with new size
 				m_render_target = RenderTargetFactory::create(m_render_target_type,
@@ -162,15 +255,46 @@ void App::run()
 			Renderer::render(*m_scene, *m_render_target, frame);
 			frame++;
 
+			// Calculate display size based on viewport mode
+			ImVec2 display_size;
+			if (m_viewport_mode == ViewportMode::WINDOW_DIMENSIONS)
+			{
+				// Fill the entire window
+				display_size = content_region;
+			}
+			else
+			{
+				// Fit custom texture size within window, maintaining aspect ratio
+				float texture_aspect = m_viewport_dimensions.x / m_viewport_dimensions.y;
+				float window_aspect = content_region.x / content_region.y;
+				
+				if (texture_aspect > window_aspect)
+				{
+					// Texture is wider, fit to window width
+					display_size.x = content_region.x;
+					display_size.y = content_region.x / texture_aspect;
+				}
+				else
+				{
+					// Texture is taller, fit to window height  
+					display_size.x = content_region.y * texture_aspect;
+					display_size.y = content_region.y;
+				}
+			}
+
 			// Display texture - try both CPU implementations
 			if (auto *cpu_target = dynamic_cast<CPURenderTarget *>(m_render_target.get()))
 			{
-				ImGui::Image(cpu_target->getTexture().get()->get_texture(), content_region);
+				ImGui::Image(cpu_target->getTexture().get()->get_texture(), display_size);
 			}
-			// else if (auto *simd_target = dynamic_cast<CPUSIMDRenderTarget *>(m_render_target.get()))
-			// {
-			// 	ImGui::Image(simd_target->getTexture().get()->get_texture(), content_region);
-			// }
+			else if (auto *simd_target = dynamic_cast<SimdRenderTarget *>(m_render_target.get()))
+			{
+				ImGui::Image(simd_target->getTexture().get()->get_texture(), display_size);
+			}
+			else if (auto *embree_target = dynamic_cast<EmbreeRenderTarget *>(m_render_target.get()))
+			{
+				ImGui::Image(embree_target->getTexture().get()->get_texture(), display_size);
+			}
 			ImGui::End();
 		}
 
@@ -192,23 +316,54 @@ void App::run()
 
 			ImGui::Text("Viewport size: %d x %d", m_render_target->getWidth(), m_render_target->getHeight());
 
+			// Viewport mode selection
+			ImGui::Separator();
+			ImGui::Text("Viewport Mode:");
+			const char *viewport_modes[] = {"Window Dimensions", "Custom 256x256", "Custom 512x512", "Custom 1024x1024"};
+			int current_mode = static_cast<int>(m_viewport_mode);
+			
+			if (ImGui::Combo("Mode", &current_mode, viewport_modes, 4))
+			{
+				m_viewport_mode = static_cast<ViewportMode>(current_mode);
+				frame = 1; // Reset frame counter to clear accumulated samples
+			}
+
 			// Render target selection for easy comparison
 			ImGui::Separator();
 			ImGui::Text("Renderer Backend:");
-			const char *render_types[] = {"CPU", "CPU SIMD"};
+			const char *render_types[] = {"CPU", "CPU SIMD", "Embree"};
 			int current_type = static_cast<int>(m_render_target_type);
 
-			if (ImGui::Combo("Backend", &current_type, render_types, 2))
+			if (ImGui::Combo("Backend", &current_type, render_types, 3))
 			{
 				m_render_target_type = static_cast<RenderTargetFactory::Type>(current_type);
 				// Recreate render target with new type
 				m_render_target = RenderTargetFactory::create(m_render_target_type,
 															  m_render_target->getWidth(),
 															  m_render_target->getHeight());
+				frame = 1; // Reset frame counter to clear accumulated samples
 				ImGui::Text("Switched to: %s", RenderTargetFactory::toString(m_render_target_type));
 			}
 
+			// Ray packet size control for Embree - removed since only single rays are supported
+			if (auto *embree_target = dynamic_cast<EmbreeRenderTarget *>(m_render_target.get()))
+			{
+				ImGui::Separator();
+				ImGui::Text("Embree Settings:");
+				ImGui::Text("Using single ray intersections (rtcIntersect1)");
+			}
+
+			// Debug options
+			ImGui::Separator();
+			ImGui::Text("Debug Options:");
+			bool debug_normals_changed = ImGui::Checkbox("Debug Normals", &m_scene->debug_normals);
+			if (debug_normals_changed)
+			{
+				frame = 1; // Reset frame counter to clear accumulated samples
+			}
+
 			// spheres
+			ImGui::Separator();
 			const SphereData &sphere_data = m_scene->get_sphere_data();
 			ImGui::Text("Spheres: %d", sphere_data.size());
 			for (size_t i = 0; i < sphere_data.size(); ++i)
@@ -219,11 +374,13 @@ void App::run()
 				if (ImGui::DragFloat3("Center", center, 0.1f))
 				{
 					m_scene->update_sphere(i, glm::vec3(center[0], center[1], center[2]), sphere_data.radii[i], sphere_data.material_indices[i]);
+					frame = 1; // Reset frame counter to clear accumulated samples
 				}
 				float radius = sphere_data.radii[i];
 				if (ImGui::DragFloat("Radius", &radius, 0.1f, 0.0f, 100.0f))
 				{
 					m_scene->update_sphere(i, glm::vec3(center[0], center[1], center[2]), radius, sphere_data.material_indices[i]);
+					frame = 1; // Reset frame counter to clear accumulated samples
 				}
 				ImGui::PopID();
 			}

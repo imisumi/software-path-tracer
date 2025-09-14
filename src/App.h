@@ -32,9 +32,19 @@ private:
 	uint32_t m_height = 1440;
 	glm::vec2 m_viewport_dimensions = glm::vec2(256.0f, 256.0f);
 
+	enum class ViewportMode
+	{
+		WINDOW_DIMENSIONS = 0,
+		CUSTOM_SIZE_256,
+		CUSTOM_SIZE_512,
+		CUSTOM_SIZE_1024
+	};
+
+	ViewportMode m_viewport_mode = ViewportMode::CUSTOM_SIZE_512;
 	std::vector<uint32_t> m_viewport_data;
 
 	std::unique_ptr<RenderTarget> m_render_target;
 	std::shared_ptr<class Scene> m_scene;
-	RenderTargetFactory::Type m_render_target_type = RenderTargetFactory::Type::CPU;
+	// RenderTargetFactory::Type m_render_target_type = RenderTargetFactory::Type::CPU_SIMD;
+	RenderTargetFactory::Type m_render_target_type = RenderTargetFactory::Type::EMBREE;
 };

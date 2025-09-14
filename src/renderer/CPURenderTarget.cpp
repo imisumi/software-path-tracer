@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <glm/gtc/constants.hpp>
 
-float random_float(uint32_t &state)
+static float random_float(uint32_t &state)
 {
 	uint32_t result;
 
@@ -15,7 +15,7 @@ float random_float(uint32_t &state)
 }
 
 // Cosine-weighted hemisphere sampling for physically accurate diffuse bounces
-glm::vec3 getRandomBounce(const glm::vec3 &normal, uint32_t &rng_state)
+static glm::vec3 getRandomBounce(const glm::vec3 &normal, uint32_t &rng_state)
 {
 	// Two random numbers for spherical coordinates
 	float u1 = random_float(rng_state);
@@ -50,26 +50,21 @@ CPURenderTarget::CPURenderTarget(uint32_t width, uint32_t height)
 
 void CPURenderTarget::setPixel(uint32_t x, uint32_t y, const glm::vec3 &color)
 {
-	if (x >= getWidth() || y >= getHeight())
-		return;
-
+	// Bounds checking removed - caller responsible for valid coordinates
 	uint32_t index = y * getWidth() + x;
-	// Accumulate color instead of overwriting
 	m_floatData[index] += glm::vec4(color, 1.0f);
 }
 
 void CPURenderTarget::setPixel(uint32_t x, uint32_t y, const glm::vec4 &color)
 {
-	if (x >= getWidth() || y >= getHeight())
-		return;
-
+	// Bounds checking removed - caller responsible for valid coordinates
 	uint32_t index = y * getWidth() + x;
-	// Accumulate color instead of overwriting
 	m_floatData[index] += color;
 }
 
 void CPURenderTarget::updateRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
 {
+	(void)x; (void)y; (void)width; (void)height;
 	// For CPU rendering, we update the entire texture at once
 	// This could be optimized to update only the specified region
 	commitPixels();
@@ -153,7 +148,7 @@ void CPURenderTarget::commitPixels()
 // 	return x + y * width + frame * (width * height + 1);
 // }
 
-uint32_t get_rng_state(uint32_t width, uint32_t height, uint32_t x, uint32_t y, uint32_t frame)
+static uint32_t get_rng_state(uint32_t width, uint32_t height, uint32_t x, uint32_t y, uint32_t frame)
 {
 	return x + y * width + frame * 982451653U; // Large prime for better distribution
 }
@@ -171,22 +166,21 @@ void CPURenderTarget::render(const Scene &scene, uint32_t frame)
 	// Increment frame count for accumulation
 	m_frameCount++;
 
-	// CPU path tracing - pixel by pixel
+	// Get direct pointer to float data for better performance
+	std::vector<glm::vec4> &float_data = m_floatData;
 
+	// CPU path tracing - pixel by pixel
 	for (uint32_t y = 0; y < height; ++y)
 	{
 		for (uint32_t x = 0; x < width; ++x)
 		{
+			const uint32_t index = y * width + x;
+			
 			// RayGen shader - only generates ray
 			glm::vec4 color = raygen_shader(scene, x, y, frame);
 
-			// uint32_t rng_state = get_rng_state(width, height, x, y, frame);
-
-			// // TraceRay - orchestrated by dispatch loop
-			// glm::vec4 color = trace_ray(scene, ray.origin, ray.direction, rng_state);
-
-			// Write to render target
-			setPixel(x, y, color);
+			// Direct accumulation - avoid bounds checking overhead
+			float_data[index] += color;
 		}
 	}
 
@@ -228,19 +222,18 @@ glm::vec4 CPURenderTarget::trace_ray(const Scene &scene, const glm::vec3 &ray_or
 	glm::vec3 current_origin = ray_origin;
 	glm::vec3 current_direction = ray_direction;
 
+	// Early debug normals check to avoid per-bounce overhead
+	const bool debug_normals = scene.debug_normals;
+
 	for (int bounce = 0; bounce < max_bounces; ++bounce)
 	{
 		// Find closest intersection
 		HitInfo hit = intersect_scene(current_origin, current_direction, scene);
 
-		// AnyHit shader (for transparency, alpha testing, etc.)
-		if (hit.is_hit() && !anyhit_shader(current_origin, current_direction, hit))
-		{
-			// Hit was rejected by anyhit shader, continue tracing
-			hit.clear();
-		}
-
-		if (!hit.is_hit())
+		// Branchless miss handling - check hit status once
+		const bool is_hit = hit.is_hit();
+		
+		if (!is_hit)
 		{
 			// Miss shader - add sky contribution and break
 			glm::vec4 miss_color = miss_shader(current_direction);
@@ -248,12 +241,15 @@ glm::vec4 CPURenderTarget::trace_ray(const Scene &scene, const glm::vec3 &ray_or
 			break;
 		}
 
-		// Calculate surface properties
-		HitInfo mutable_hit = hit;
-		calculate_surface_properties(scene, current_origin, current_direction, mutable_hit);
+		// Calculate surface properties only once
+		calculate_surface_properties(scene, current_origin, current_direction, hit);
 
-		// Material has roughness = 1.0 (fully diffuse)
-		// For diffuse materials, we don't add emission here, just bounce
+		// Debug normals mode - return normal visualization immediately
+		if (debug_normals)
+		{
+			glm::vec3 normal_color = (hit.normal + 1.0f) * 0.5f; // Map [-1,1] to [0,1]
+			return glm::vec4(normal_color, 1.0f);
+		}
 
 		// Update throughput (for now, assume albedo of 0.7 for all materials)
 		ray_throughput *= 0.7f;
@@ -268,10 +264,9 @@ glm::vec4 CPURenderTarget::trace_ray(const Scene &scene, const glm::vec3 &ray_or
 		}
 
 		// Generate new ray direction using cosine-weighted hemisphere sampling
-		current_direction = getRandomBounce(mutable_hit.normal, rng_state);
-		// current_origin = mutable_hit.position;
+		current_direction = getRandomBounce(hit.normal, rng_state);
 		const float EPSILON = 1e-5f;
-		current_origin = mutable_hit.position + mutable_hit.normal * EPSILON;
+		current_origin = hit.position + hit.normal * EPSILON;
 	}
 
 	return glm::vec4(accumulated_color, 1.0f);
@@ -313,12 +308,23 @@ bool CPURenderTarget::intersect_sphere(const glm::vec3 &ray_origin, const glm::v
 									   const glm::vec3 &sphere_center, float sphere_radius,
 									   uint32_t sphere_id, uint32_t material_id, HitInfo &hit) const
 {
-	// Ray-sphere intersection using algebraic method
+// Ray-sphere intersection using algebraic method
+#if 0
 	glm::vec3 L = ray_origin - sphere_center;
 	// float a = glm::dot(ray_direction, ray_direction);
 	float a = 1.0f; // Assume ray_direction is normalized
 	float b = 2.0f * glm::dot(L, ray_direction);
 	float c = glm::dot(L, L) - sphere_radius * sphere_radius;
+#else
+	float Lx = ray_origin.x - sphere_center.x;
+	float Ly = ray_origin.y - sphere_center.y;
+	float Lz = ray_origin.z - sphere_center.z;
+
+	// Then use Lx, Ly, Lz in subsequent calculations
+	float a = 1.0f; // Assume ray_direction is normalized
+	float b = 2.0f * (Lx * ray_direction.x + Ly * ray_direction.y + Lz * ray_direction.z);
+	float c = Lx * Lx + Ly * Ly + Lz * Lz - sphere_radius * sphere_radius;
+#endif
 
 	float discriminant = b * b - 4 * a * c;
 	if (discriminant < 0)
@@ -337,8 +343,6 @@ bool CPURenderTarget::intersect_sphere(const glm::vec3 &ray_origin, const glm::v
 	hit.t = t;
 	hit.normal = glm::normalize(ray_origin + t * ray_direction - sphere_center);
 	hit.position = ray_origin + t * ray_direction;
-	// avoid self-intersection by offsetting position slightly along normal
-	// hit.position += hit.normal * 0.001f;
 	hit.object_id = sphere_id;
 	hit.material_id = material_id;
 
@@ -372,6 +376,7 @@ void CPURenderTarget::calculate_surface_properties(const Scene &scene, const glm
 
 bool CPURenderTarget::anyhit_shader(const glm::vec3 &ray_origin, const glm::vec3 &ray_direction, HitInfo &hit) const
 {
+	(void)ray_origin; (void)ray_direction; (void)hit;
 	// Default: accept all hits
 	// In the future, this can handle transparency, alpha testing, etc.
 	return true;

@@ -27,6 +27,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Project options
 option(USE_PCH "Use precompiled headers" ON)
 option(ENABLE_CLANG_TIDY "Enable clang-tidy analysis" OFF)
+option(ENABLE_OPENMP "Enable OpenMP multithreading" ON)
 
 # Compiler warnings
 if(MSVC)
@@ -39,8 +40,19 @@ endif()
 # find_package(fmt REQUIRED)
 # find_package(spdlog REQUIRED)
 
+set(embree_DIR "vendor/embree/windows/lib/cmake/embree-4.4.0")
+
 find_package(SDL3 CONFIG REQUIRED)
 find_package(hwy CONFIG REQUIRED)
+find_package(embree 4 REQUIRED)
+
+# OpenMP - conditional
+if(ENABLE_OPENMP)
+    find_package(OpenMP REQUIRED)
+    message(STATUS "OpenMP enabled - using multithreading")
+else()
+    message(STATUS "OpenMP disabled - single-threaded execution")
+endif()
 
 # Add vendor libraries
 add_subdirectory(vendor)
@@ -105,8 +117,14 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     imgui
 	glm
 	hwy::hwy
-	# SDL3::SDL3
+	embree
 )
+
+# Link OpenMP conditionally
+if(ENABLE_OPENMP)
+    target_link_libraries(${PROJECT_NAME} PRIVATE OpenMP::OpenMP_CXX)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE OPENMP_ENABLED)
+endif()
 
 # Copy SDL3 DLL to output directory on Windows
 if(WIN32)
@@ -115,6 +133,28 @@ if(WIN32)
         $<TARGET_FILE:SDL3::SDL3>
         $<TARGET_FILE_DIR:${PROJECT_NAME}>
         COMMENT "Copying SDL3 DLL to output directory"
+    )
+    
+    # Copy Embree DLLs to output directory
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/embree/windows/bin/embree4.dll
+        $<TARGET_FILE_DIR:${PROJECT_NAME}>
+        COMMENT "Copying Embree DLL to output directory"
+    )
+    
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/embree/windows/bin/tbb12.dll
+        $<TARGET_FILE_DIR:${PROJECT_NAME}>
+        COMMENT "Copying TBB DLL to output directory"
+    )
+    
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/embree/windows/bin/tbbmalloc.dll
+        $<TARGET_FILE_DIR:${PROJECT_NAME}>
+        COMMENT "Copying TBB malloc DLL to output directory"
     )
 endif()
 # target_link_libraries(${PROJECT_NAME} PRIVATE

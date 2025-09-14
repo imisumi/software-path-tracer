@@ -1,18 +1,18 @@
 #pragma once
 
-#include "RenderTarget.h"
-#include "Texture2D.h"
-#include "HitInfo.h"
+#include "../RenderTarget.h"
+#include "../Texture2D.h"
+#include "../HitInfo.h"
 #include <memory>
 #include <vector>
 #include <cstdint>
 
-#include "Ray.h"
+#include "../Ray.h"
 
-class CPURenderTarget : public RenderTarget {
+class EmbreeRenderTarget : public RenderTarget {
 public:
-    CPURenderTarget(uint32_t width, uint32_t height);
-    ~CPURenderTarget() = default;
+    EmbreeRenderTarget(uint32_t width, uint32_t height);
+    ~EmbreeRenderTarget() = default;
 
     // Main rendering - implements CPU path tracing
     void render(const Scene& scene, uint32_t frame) override;
@@ -36,27 +36,25 @@ public:
     
     // Commit all pixel changes to the texture (call after rendering)
     void commitPixels();
-
+    
 private:
     // Ray tracing pipeline stages
-    glm::vec4 raygen_shader(const Scene& scene, uint32_t x, uint32_t y, uint32_t frame) const;
+    void raygen_shader_single(const Scene& scene, uint32_t x, uint32_t y, uint32_t frame) const;
+    void raygen_shader_packet4(const Scene& scene, uint32_t start_x, uint32_t start_y, uint32_t frame) const;
+    void raygen_shader_packet8(const Scene& scene, uint32_t start_x, uint32_t start_y, uint32_t frame) const;
+    void raygen_shader_packet16(const Scene& scene, uint32_t start_x, uint32_t start_y, uint32_t frame) const;
+    
+    // Unified packet function (replaces the above 4 functions)
+    void raygen_shader_packet(const Scene& scene, uint32_t start_x, uint32_t start_y, uint32_t frame, uint32_t packet_size) const;
+    
+    // Path tracing
     glm::vec4 trace_ray(const Scene& scene, const glm::vec3& ray_origin, const glm::vec3& ray_direction, uint32_t& rng_state) const;
-    bool anyhit_shader(const glm::vec3& ray_origin, const glm::vec3& ray_direction, HitInfo& hit) const;
-    glm::vec4 closesthit_shader(const Scene& scene, const glm::vec3& ray_origin, const glm::vec3& ray_direction, const HitInfo& hit) const;
-    glm::vec4 miss_shader(const glm::vec3& ray_direction) const;
-    
-    // Hit testing - returns closest hit info
-    HitInfo intersect_scene(const glm::vec3& ray_origin, const glm::vec3& ray_direction, const Scene& scene) const;
-    bool intersect_sphere(const glm::vec3& ray_origin, const glm::vec3& ray_direction,
-                         const glm::vec3& sphere_center, float sphere_radius, 
-                         uint32_t sphere_id, uint32_t material_id, HitInfo& hit) const;
-    
-    // Surface calculations
-    void calculate_surface_properties(const Scene& scene, const glm::vec3& ray_origin, 
-                                     const glm::vec3& ray_direction, HitInfo& hit) const;
-    
+    glm::vec4 trace_ray_single_bounce(const Scene& scene, const glm::vec3& ray_origin, const glm::vec3& ray_direction, uint32_t& rng_state) const;
+
     uint32_t colorToRGBA(const glm::vec3& color) const;
-    
+
+	glm::vec3 sample_sky(const glm::vec3& direction, const Scene& scene) const;
+
     std::unique_ptr<Texture2D> m_texture;
     std::vector<glm::vec4> m_floatData;
     std::vector<uint32_t> m_displayData;
