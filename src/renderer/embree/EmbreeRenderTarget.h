@@ -52,6 +52,10 @@ private:
     glm::vec4 trace_ray_single_bounce(const Scene& scene, const glm::vec3& ray_origin, const glm::vec3& ray_direction, uint32_t& rng_state) const;
 
     uint32_t colorToRGBA(const glm::vec3& color) const;
+    
+    // Tonemapping functions
+    glm::vec3 aces_tonemap(const glm::vec3& hdr_color, float exposure = 1.0f) const;
+    glm::vec3 linear_to_srgb(const glm::vec3& linear_color) const;
 
 	glm::vec3 sample_sky(const glm::vec3& direction, const Scene& scene) const;
 
@@ -59,4 +63,13 @@ private:
     std::vector<glm::vec4> m_floatData;
     std::vector<uint32_t> m_displayData;
     uint32_t m_frameCount = 0;
+    
+public:
+    // Tonemapping controls
+    float m_exposure = 1.0f;
+    bool m_auto_exposure = false;
+    float m_target_luminance = 0.18f; // Middle gray target
+    
+    // Auto exposure calculation (public for UI access)
+    float calculate_auto_exposure() const;
 };

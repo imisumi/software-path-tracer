@@ -126,12 +126,28 @@ void EmbreeRenderTarget::commitPixels()
 {
 	if (m_texture && m_frameCount > 0)
 	{
-		// Convert float buffer to uint8 RGBA for display
-		// Divide by frame count for averaging
+		// Convert float buffer to uint8 RGBA for display with tonemapping
+		// Pipeline: HDR accumulation → Average → Auto exposure → ACES tonemap → sRGB gamma → Display
+		
+		// Calculate auto exposure if enabled
+		float final_exposure = m_exposure;
+		if (m_auto_exposure) {
+			final_exposure = calculate_auto_exposure();
+		}
+		
 		for (size_t i = 0; i < m_floatData.size(); ++i)
 		{
-			glm::vec3 averagedColor = glm::vec3(m_floatData[i]) / static_cast<float>(m_frameCount);
-			m_displayData[i] = colorToRGBA(averagedColor);
+			// 1. Average accumulated HDR values (linear space)
+			glm::vec3 hdr_color = glm::vec3(m_floatData[i]) / static_cast<float>(m_frameCount);
+			
+			// 2. Apply ACES tonemapping (HDR → LDR, still linear)
+			glm::vec3 tonemapped = aces_tonemap(hdr_color, final_exposure);
+			
+			// 3. Apply gamma correction (linear → sRGB)
+			glm::vec3 srgb_color = linear_to_srgb(tonemapped);
+			
+			// 4. Convert to display format
+			m_displayData[i] = colorToRGBA(srgb_color);
 		}
 		m_texture->set_data(m_displayData);
 	}
@@ -424,9 +440,66 @@ uint32_t EmbreeRenderTarget::colorToRGBA(const glm::vec3 &color) const
 	return (r << 24) | (g << 16) | (b << 8) | (a << 0);
 }
 
+glm::vec3 EmbreeRenderTarget::aces_tonemap(const glm::vec3& hdr_color, float exposure) const
+{
+	// Apply exposure
+	glm::vec3 exposed = hdr_color * exposure;
+	
+	// ACES filmic tone mapping
+	const float a = 2.51f;
+	const float b = 0.03f;
+	const float c = 2.43f;
+	const float d = 0.59f;
+	const float e = 0.14f;
+	
+	return glm::clamp((exposed * (a * exposed + b)) / (exposed * (c * exposed + d) + e), 0.0f, 1.0f);
+}
+
+glm::vec3 EmbreeRenderTarget::linear_to_srgb(const glm::vec3& linear_color) const
+{
+	// Convert linear to sRGB gamma
+	return glm::pow(linear_color, glm::vec3(1.0f / 2.2f));
+}
+
+float EmbreeRenderTarget::calculate_auto_exposure() const
+{
+	if (m_frameCount == 0 || m_floatData.empty()) {
+		return 1.0f;
+	}
+	
+	// Calculate average luminance of the image
+	float total_luminance = 0.0f;
+	uint32_t valid_pixels = 0;
+	
+	for (size_t i = 0; i < m_floatData.size(); ++i)
+	{
+		glm::vec3 color = glm::vec3(m_floatData[i]) / static_cast<float>(m_frameCount);
+		
+		// Convert RGB to luminance (Y in CIE XYZ)
+		float luminance = 0.299f * color.r + 0.587f * color.g + 0.114f * color.b;
+		
+		// Skip very dark or very bright pixels for more stable auto exposure
+		if (luminance > 0.001f && luminance < 10.0f) {
+			total_luminance += luminance;
+			valid_pixels++;
+		}
+	}
+	
+	if (valid_pixels == 0) {
+		return 1.0f;
+	}
+	
+	float average_luminance = total_luminance / valid_pixels;
+	
+	// Calculate exposure to map average luminance to target (middle gray)
+	float auto_exposure = m_target_luminance / (average_luminance + 0.001f); // Avoid division by zero
+	
+	// Clamp auto exposure to reasonable range
+	return glm::clamp(auto_exposure, 0.1f, 10.0f);
+}
+
 glm::vec3 EmbreeRenderTarget::sample_sky(const glm::vec3 &direction, const Scene &scene) const
 {
-	float t = 0.5f * (direction.y + 1.0f);
-	glm::vec3 sky_color = glm::mix(glm::vec3(1.0f), glm::vec3(0.5f, 0.7f, 1.0f), t);
-	return sky_color;
+	// Use HDR environment map if available
+	return scene.sample_environment(direction);
 }

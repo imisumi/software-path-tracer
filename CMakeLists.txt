@@ -45,6 +45,7 @@ set(embree_DIR "vendor/embree/windows/lib/cmake/embree-4.4.0")
 find_package(SDL3 CONFIG REQUIRED)
 find_package(hwy CONFIG REQUIRED)
 find_package(embree 4 REQUIRED)
+find_package(OpenImageIO CONFIG REQUIRED)
 
 # OpenMP - conditional
 if(ENABLE_OPENMP)
@@ -118,6 +119,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 	glm
 	hwy::hwy
 	embree
+	OpenImageIO::OpenImageIO
 )
 
 # Link OpenMP conditionally
@@ -155,6 +157,14 @@ if(WIN32)
         ${CMAKE_CURRENT_SOURCE_DIR}/vendor/embree/windows/bin/tbbmalloc.dll
         $<TARGET_FILE_DIR:${PROJECT_NAME}>
         COMMENT "Copying TBB malloc DLL to output directory"
+    )
+    
+    # Copy assets folder to output directory
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets
+        $<TARGET_FILE_DIR:${PROJECT_NAME}>/assets
+        COMMENT "Copying assets folder to output directory"
     )
 endif()
 # target_link_libraries(${PROJECT_NAME} PRIVATE

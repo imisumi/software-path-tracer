@@ -45,6 +45,4 @@ private:
 
 	std::unique_ptr<RenderTarget> m_render_target;
 	std::shared_ptr<class Scene> m_scene;
-	// RenderTargetFactory::Type m_render_target_type = RenderTargetFactory::Type::CPU_SIMD;
-	RenderTargetFactory::Type m_render_target_type = RenderTargetFactory::Type::EMBREE;
 };
