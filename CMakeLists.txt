@@ -137,27 +137,17 @@ if(WIN32)
         COMMENT "Copying SDL3 DLL to output directory"
     )
     
-    # Copy Embree DLLs to output directory
-    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/embree/windows/bin/embree4.dll
-        $<TARGET_FILE_DIR:${PROJECT_NAME}>
-        COMMENT "Copying Embree DLL to output directory"
-    )
-    
-    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/embree/windows/bin/tbb12.dll
-        $<TARGET_FILE_DIR:${PROJECT_NAME}>
-        COMMENT "Copying TBB DLL to output directory"
-    )
-    
-    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/embree/windows/bin/tbbmalloc.dll
-        $<TARGET_FILE_DIR:${PROJECT_NAME}>
-        COMMENT "Copying TBB malloc DLL to output directory"
-    )
+    # Copy Embree DLLs (provided by render library)
+    if(DEFINED EMBREE_DLLS)
+        foreach(DLL ${EMBREE_DLLS})
+            add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${DLL}"
+                $<TARGET_FILE_DIR:${PROJECT_NAME}>
+                COMMENT "Copying Embree DLL: ${DLL}"
+            )
+        endforeach()
+    endif()
     
     # Copy assets folder to output directory
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD

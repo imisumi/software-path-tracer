@@ -28,27 +28,40 @@ endif()
 
 find_package(embree 4 REQUIRED)
 
-# Library source files (when we add .cpp files)
-# file(GLOB_RECURSE RENDER_SOURCES src/*.cpp)
+# Library source files
+file(GLOB_RECURSE RENDER_SOURCES src/*.cpp)
 
-# Create library (INTERFACE for now since header-only)
-add_library(render INTERFACE)
+# Create library
+add_library(render STATIC ${RENDER_SOURCES})
 
 # Public include directories
-target_include_directories(render INTERFACE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
+target_include_directories(render 
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
 # Public dependencies - users get these automatically
-target_link_libraries(render INTERFACE
-    glm
-    embree
+target_link_libraries(render 
+    PUBLIC
+        glm
+        embree
 )
 
 # Compiler features
-target_compile_features(render INTERFACE cxx_std_23)
+target_compile_features(render PUBLIC cxx_std_23)
 
-# When we become a real library with .cpp files, change to:
-# add_library(render STATIC ${RENDER_SOURCES})
-# target_link_libraries(render PUBLIC glm embree)  # PUBLIC instead of INTERFACE
+# Expose Embree DLL paths for parent projects
+if(WIN32)
+    set(EMBREE_DLL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vendor/embree/windows/bin" PARENT_SCOPE)
+    set(EMBREE_DLLS
+        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/embree/windows/bin/embree4.dll"
+        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/embree/windows/bin/tbb12.dll"
+        "${CMAKE_CURRENT_SOURCE_DIR}/vendor/embree/windows/bin/tbbmalloc.dll"
+        PARENT_SCOPE
+    )
+endif()
+
+

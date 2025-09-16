@@ -9,6 +9,9 @@
 
 #include "renderer/RenderTargetFactory.h"
 
+#include "render/RenderEngine.h"
+#include "render/Types.h"
+
 struct SDL_Window;
 struct SDL_Renderer;
 struct SDL_Texture;
@@ -45,4 +48,10 @@ private:
 
 	std::unique_ptr<RenderTarget> m_render_target;
 	std::shared_ptr<class Scene> m_scene;
+
+	std::unique_ptr<Texture2D> test_tex;
+
+private:
+	std::unique_ptr<render::RenderEngine> m_render_engine;
+	std::shared_ptr<render::RenderSettings> m_render_settings;
 };

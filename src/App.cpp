@@ -18,6 +18,8 @@
 
 #include <embree4/rtcore.h>
 
+// Factory handles the specific implementation
+
 // Cross-platform SIMD includes
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
 #include <xmmintrin.h>
@@ -91,10 +93,10 @@ App::App()
 
 	{
 		m_scene = std::make_shared<Scene>();
-		
+
 		// Initialize Embree
 		m_scene->init_embree();
-		
+
 		// Enable fast floating point modes for better Embree performance (x86/x64 only)
 #ifdef HAS_X86_SIMD
 		_MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
@@ -102,9 +104,9 @@ App::App()
 #endif
 
 		// Add initial spheres
-		m_scene->add_sphere(glm::vec3(0.0f, -102.0f, 5.0f), 100.0f);  // Ground sphere
-		m_scene->add_sphere(glm::vec3(0.0f, -1.0f, 5.0f), 1.0f);      // Main sphere
-		
+		m_scene->add_sphere(glm::vec3(0.0f, -102.0f, 5.0f), 100.0f); // Ground sphere
+		m_scene->add_sphere(glm::vec3(0.0f, -1.0f, 5.0f), 1.0f);	 // Main sphere
+
 		// Add grid of small spheres
 		int dims = 5;
 		for (int x = -dims; x <= dims; x += 2)
@@ -116,13 +118,27 @@ App::App()
 		}
 
 		// Load HDR environment map
-		if (!m_scene->load_environment_map("/Users/imisumi/Desktop/software-path-tracer/assets/lonely_road_afternoon_2k.exr")) {
-		// if (!m_scene->load_environment_map("assets/climbing_gym_1k.exr")) {
-		std::cerr << "Warning: Failed to load HDR environment map" << std::endl;
+		if (!m_scene->load_environment_map("/Users/imisumi/Desktop/software-path-tracer/assets/lonely_road_afternoon_2k.exr"))
+		{
+			// if (!m_scene->load_environment_map("assets/climbing_gym_1k.exr")) {
+			std::cerr << "Warning: Failed to load HDR environment map" << std::endl;
 		}
 
 		// Create render target with initial size - Embree only
 		m_render_target = RenderTargetFactory::create(256, 256);
+	}
+
+	{
+		m_render_engine = render::RenderEngine::createRenderEngine(render::BackendType::CPU_EMBREE);
+		m_render_settings = std::make_shared<render::RenderSettings>();
+		m_render_settings->setResolution(512, 512);
+		m_render_settings->setSamplesPerPixel(64);
+		m_render_settings->setMaxBounces(8);
+		m_render_settings->setExposure(1.0f);
+
+		m_render_engine->startProgressive(nullptr, m_render_settings);
+
+		test_tex = std::make_unique<Texture2D>(512, 512, Texture2D::Format::RGBA8);
 	}
 }
 
@@ -220,6 +236,24 @@ void App::run()
 															  (int)m_viewport_dimensions.y);
 			}
 
+			{
+				m_render_engine->render();
+				if (m_render_engine->isProgressiveReady())
+				{
+					auto &pixels = m_render_engine->getProgressiveResult(); // std::vector<uint32_t>
+
+					// Upload to SDL texture
+					if (auto *embree_target = dynamic_cast<EmbreeRenderTarget *>(m_render_target.get()))
+					{
+						SDL_UpdateTexture((SDL_Texture *)test_tex->get_texture(), nullptr,
+										  pixels.data(),
+										  m_render_engine->getWidth() * sizeof(uint32_t));
+					}
+
+					// printf("Sample %d\n", m_render_engine->getCurrentSampleCount());
+				}
+			}
+
 			// Use static renderer with render target
 			Renderer::render(*m_scene, *m_render_target, frame);
 			frame++;
@@ -256,6 +290,11 @@ void App::run()
 			{
 				ImGui::Image(embree_target->getTexture().get()->get_texture(), display_size);
 			}
+
+			{
+				ImGui::Image((SDL_Texture *)test_tex->get_texture(), display_size);
+			}
+
 			ImGui::End();
 		}
 
@@ -307,7 +346,7 @@ void App::run()
 			if (auto *embree_target = dynamic_cast<EmbreeRenderTarget *>(m_render_target.get()))
 			{
 				ImGui::Checkbox("Auto Exposure", &embree_target->m_auto_exposure);
-				
+
 				if (!embree_target->m_auto_exposure)
 				{
 					if (ImGui::SliderFloat("Exposure", &embree_target->m_exposure, 0.1f, 5.0f))
@@ -335,53 +374,53 @@ void App::run()
 			ImGui::Separator();
 			const SphereData &sphere_data = m_scene->get_sphere_data();
 			ImGui::Text("Spheres: %d", (int)sphere_data.size());
-			
+
 			// Add/Remove sphere controls
 			static float new_sphere_center[3] = {0.0f, 0.0f, 5.0f};
 			static float new_sphere_radius = 1.0f;
-			
+
 			ImGui::DragFloat3("New Center", new_sphere_center, 0.1f);
 			ImGui::DragFloat("New Radius", &new_sphere_radius, 0.1f, 0.1f, 100.0f);
-			
+
 			if (ImGui::Button("Add Sphere"))
 			{
 				m_scene->add_sphere(glm::vec3(new_sphere_center[0], new_sphere_center[1], new_sphere_center[2]), new_sphere_radius);
 				frame = 1; // Reset frame counter to clear accumulated samples
 			}
-			
+
 			ImGui::SameLine();
 			if (ImGui::Button("Remove Last") && sphere_data.size() > 0)
 			{
 				m_scene->remove_sphere((uint32_t)sphere_data.size() - 1);
 				frame = 1; // Reset frame counter to clear accumulated samples
 			}
-			
+
 			// Edit existing spheres
 			for (size_t i = 0; i < sphere_data.size(); ++i)
 			{
 				ImGui::PushID((int)i);
-				
+
 				bool sphere_changed = false;
 				ImGui::Text("Sphere %d", (int)i);
-				
+
 				float center[3] = {sphere_data.cx[i], sphere_data.cy[i], sphere_data.cz[i]};
 				if (ImGui::DragFloat3("Center", center, 0.1f))
 				{
 					sphere_changed = true;
 				}
-				
+
 				float radius = sphere_data.radii[i];
 				if (ImGui::DragFloat("Radius", &radius, 0.1f, 0.1f, 100.0f))
 				{
 					sphere_changed = true;
 				}
-				
+
 				if (sphere_changed)
 				{
 					m_scene->update_sphere((uint32_t)i, glm::vec3(center[0], center[1], center[2]), radius, sphere_data.material_indices[i]);
 					frame = 1; // Reset frame counter to clear accumulated samples
 				}
-				
+
 				ImGui::SameLine();
 				if (ImGui::Button("Delete"))
 				{
@@ -390,7 +429,7 @@ void App::run()
 					ImGui::PopID();
 					break; // Exit loop since indices changed
 				}
-				
+
 				ImGui::PopID();
 			}
 
