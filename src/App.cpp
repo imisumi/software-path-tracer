@@ -116,7 +116,7 @@ App::App()
 		}
 
 		// Load HDR environment map
-		if (!m_scene->load_environment_map("assets/wasteland_clouds_puresky_1k.exr")) {
+		if (!m_scene->load_environment_map("/Users/imisumi/Desktop/software-path-tracer/assets/lonely_road_afternoon_2k.exr")) {
 		// if (!m_scene->load_environment_map("assets/climbing_gym_1k.exr")) {
 		std::cerr << "Warning: Failed to load HDR environment map" << std::endl;
 		}

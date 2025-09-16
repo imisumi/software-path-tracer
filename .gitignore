@@ -3,3 +3,7 @@ build_msvc/
 .idea/
 
 vendor/embree/windows/*
+vendor/embree/mac/*
+
+
+libs/render/vendor/embree/*

@@ -27,7 +27,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Project options
 option(USE_PCH "Use precompiled headers" ON)
 option(ENABLE_CLANG_TIDY "Enable clang-tidy analysis" OFF)
-option(ENABLE_OPENMP "Enable OpenMP multithreading" ON)
+option(ENABLE_OPENMP "Enable OpenMP multithreading" OFF)
 
 # Compiler warnings
 if(MSVC)
@@ -40,12 +40,10 @@ endif()
 # find_package(fmt REQUIRED)
 # find_package(spdlog REQUIRED)
 
-set(embree_DIR "vendor/embree/windows/lib/cmake/embree-4.4.0")
-
 find_package(SDL3 CONFIG REQUIRED)
 find_package(hwy CONFIG REQUIRED)
-find_package(embree 4 REQUIRED)
 find_package(OpenImageIO CONFIG REQUIRED)
+# embree and glm now provided by pathtracer library
 
 # OpenMP - conditional
 if(ENABLE_OPENMP)
@@ -55,10 +53,13 @@ else()
     message(STATUS "OpenMP disabled - single-threaded execution")
 endif()
 
-# Add vendor libraries
+# Add vendor libraries (editor-only dependencies)
 add_subdirectory(vendor)
 # add_subdirectory(vendor/sdl)
-add_subdirectory(vendor/glm)
+# glm now in pathtracer/vendor
+
+# Add render library (self-contained)
+add_subdirectory(libs/render)
 
 # Recursively find all source files in src/
 file(GLOB_RECURSE SOURCES
@@ -116,10 +117,9 @@ endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE
 	SDL3::SDL3
     imgui
-	glm
 	hwy::hwy
-	embree
 	OpenImageIO::OpenImageIO
+	render  # Provides glm and embree automatically
 )
 
 # Link OpenMP conditionally

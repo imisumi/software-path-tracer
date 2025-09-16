@@ -7,7 +7,10 @@
 #include <vector>
 #include <cstdint>
 
-#include "../Ray.h"
+#include <render/Types.h>
+
+// TODO: This class will be replaced by render::CPUPathTracer
+// For now, we can use render::Ray instead of the old Ray struct
 
 class EmbreeRenderTarget : public RenderTarget {
 public:
