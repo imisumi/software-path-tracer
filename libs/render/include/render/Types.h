@@ -18,20 +18,6 @@ namespace render {
         }
     };
 
-    /// Backend types for different rendering implementations
-    enum class BackendType {
-        CPU_EMBREE,     // CPU ray tracing with Embree acceleration
-        GPU_OPTIX,      // NVIDIA OptiX hardware ray tracing
-        GPU_METAL       // Apple Metal ray tracing
-    };
-
-    /// Different rendering techniques supported
-    enum class RenderingTechnique {
-        PATH_TRACING,   // Monte Carlo path tracing
-        RASTERIZATION,  // Traditional GPU rasterization (future)
-        HYBRID          // Combination approaches (future)
-    };
-
     /// Render result containing CPU pixel data
     struct RenderResult {
         std::vector<glm::vec4> pixels;  // RGBA float pixels in CPU memory
@@ -56,6 +42,8 @@ namespace render {
     /// Render settings with automatic dirty flag management
     class RenderSettings {
     public:
+		RenderSettings() = default;
+
         // Image parameters
         void setResolution(uint32_t width, uint32_t height);
         void setProgressive(bool progressive);

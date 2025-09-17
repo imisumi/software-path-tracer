@@ -9,8 +9,9 @@
 
 #include "renderer/RenderTargetFactory.h"
 
-#include "render/RenderEngine.h"
 #include "render/Types.h"
+
+#include "render/PathTracer.h"
 
 struct SDL_Window;
 struct SDL_Renderer;
@@ -52,6 +53,9 @@ private:
 	std::unique_ptr<Texture2D> test_tex;
 
 private:
-	std::unique_ptr<render::RenderEngine> m_render_engine;
-	std::shared_ptr<render::RenderSettings> m_render_settings;
+	// std::unique_ptr<render::RenderEngine> m_render_engine;
+	// std::shared_ptr<render::RenderSettings> m_render_settings;
+
+	std::unique_ptr<render::PathTracer> m_path_tracer;
+	// std::shared_ptr<render::RenderSettings> m_render_settings;
 };

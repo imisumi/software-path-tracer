@@ -129,14 +129,23 @@ App::App()
 	}
 
 	{
-		m_render_engine = render::RenderEngine::createRenderEngine(render::BackendType::CPU_EMBREE);
-		m_render_settings = std::make_shared<render::RenderSettings>();
-		m_render_settings->setResolution(512, 512);
-		m_render_settings->setSamplesPerPixel(64);
-		m_render_settings->setMaxBounces(8);
-		m_render_settings->setExposure(1.0f);
+		// m_render_engine = render::RenderEngine::createRenderEngine(render::BackendType::CPU_EMBREE);
+		// m_render_settings = std::make_shared<render::RenderSettings>();
+		// m_render_settings->setResolution(512, 512);
+		// m_render_settings->setSamplesPerPixel(64);
+		// m_render_settings->setMaxBounces(8);
+		// m_render_settings->setExposure(1.0f);
 
-		m_render_engine->startProgressive(nullptr, m_render_settings);
+		// m_render_engine->startProgressive(nullptr, m_render_settings);
+
+		m_path_tracer = render::PathTracer::create_path_tracer(render::PathTracer::BackendType::CPU_EMBREE);
+		
+		// Initialize render settings
+		auto render_settings = std::make_shared<render::RenderSettings>();
+		render_settings->setResolution(512, 512);
+		render_settings->setSamplesPerPixel(64);
+		render_settings->setMaxBounces(8);
+		m_path_tracer->set_settings(render_settings);
 
 		test_tex = std::make_unique<Texture2D>(512, 512, Texture2D::Format::RGBA8);
 	}
@@ -237,17 +246,16 @@ void App::run()
 			}
 
 			{
-				m_render_engine->render();
-				if (m_render_engine->isProgressiveReady())
+				m_path_tracer->render();
+				const auto &result = m_path_tracer->get_render_result();
+				if (result.width > 0 && result.height > 0)
 				{
-					auto &pixels = m_render_engine->getProgressiveResult(); // std::vector<uint32_t>
-
 					// Upload to SDL texture
 					if (auto *embree_target = dynamic_cast<EmbreeRenderTarget *>(m_render_target.get()))
 					{
 						SDL_UpdateTexture((SDL_Texture *)test_tex->get_texture(), nullptr,
-										  pixels.data(),
-										  m_render_engine->getWidth() * sizeof(uint32_t));
+										  result.image_buffer.data(),
+										  result.width * sizeof(uint32_t));
 					}
 
 					// printf("Sample %d\n", m_render_engine->getCurrentSampleCount());
@@ -315,6 +323,7 @@ void App::run()
 			ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
 
 			ImGui::Text("Viewport size: %d x %d", m_render_target->getWidth(), m_render_target->getHeight());
+
 
 			// Viewport mode selection
 			ImGui::Separator();

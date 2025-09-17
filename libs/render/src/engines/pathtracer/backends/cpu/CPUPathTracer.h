@@ -1,6 +1,6 @@
 #pragma once
 
-#include "render/RenderEngine.h"
+#include "render/PathTracer.h"
 #include <vector>
 #include <memory>
 
@@ -9,65 +9,58 @@
 // Forward declarations
 class Scene;
 
+typedef struct RTCDeviceTy *RTCDevice;
+typedef struct RTCSceneTy *RTCScene;
+
 namespace render
 {
 
 	/// CPU-based path tracing implementation using Embree for acceleration
 	/// Clean, modern API for progressive path tracing
-	class CPUPathTracer : public RenderEngine
+	class CPUPathTracer : public PathTracer
 	{
 	public:
 		CPUPathTracer();
 		~CPUPathTracer();
 
-		// RenderEngine interface implementation
-		void startProgressive(std::shared_ptr<const Scene> scene, std::shared_ptr<RenderSettings> settings) override;
-		void stopProgressive() override;
-		bool isProgressiveReady() const override;
-		const std::vector<uint32_t> &getProgressiveResult() override;
-
-		// Dimensions and status
-		uint32_t getWidth() const override { return m_renderSettings ? m_renderSettings->getWidth() : 0; }
-		uint32_t getHeight() const override { return m_renderSettings ? m_renderSettings->getHeight() : 0; }
-		uint32_t getCurrentSampleCount() const override { return m_frameCount; }
-		bool isProgressiveRunning() const override { return m_progressiveRunning; }
-
-		// Backend identification
-		std::string getBackendName() const override { return "CPU Path Tracer (Embree)"; }
-		BackendType getBackendType() const override { return BackendType::CPU_EMBREE; }
-		RenderingTechnique getRenderingTechnique() const override { return RenderingTechnique::PATH_TRACING; }
-
 		void render() override;
 
+		void set_scene(std::shared_ptr<Scene> scene) override { m_scene = scene; }
+		void set_settings(std::shared_ptr<RenderSettings> settings) override { m_renderSettings = settings; }
+
+		std::shared_ptr<Scene> get_scene() const override { return m_scene; }
+		std::shared_ptr<RenderSettings> get_settings() const override { return m_renderSettings; }
+
+		// Backend identification
+		std::string get_backend_name() const override { return "CPU Path Tracer (Embree)"; }
+		BackendType get_backend_type() const override { return BackendType::CPU_EMBREE; }
+
+		const PathTracer::RenderResult &get_render_result() override;
+
 	private:
-		typedef struct RTCDeviceTy *RTCDevice;
-		typedef struct RTCSceneTy *RTCScene;
+		void invalidate();
+
+		bool initialize_embree();
+		void cleanup_embree();
+
+	private:
+
 		// Embree device and scene management
 		RTCDevice m_embreeDevice = nullptr;
 		RTCScene m_embreeScene = nullptr;
 
 		// Progressive state
-		std::shared_ptr<const Scene> m_scene;
-		std::shared_ptr<RenderSettings> m_renderSettings;
+		std::shared_ptr<Scene> m_scene;
+
+		PathTracer::RenderResult m_render_result;
+
 		uint32_t m_frameCount = 0;
 		bool m_progressiveRunning = false;
 
 		// Rendering buffers
-		std::vector<float> m_accumulationBuffer; // RGBARGBA... high precision
-		std::vector<uint32_t> m_outputBuffer;	 // RGBA8 packed for display
+		std::vector<float> m_accumulation_buffer; // RGBARGBA... high precision
+		std::shared_ptr<RenderSettings> m_renderSettings;
 		bool m_outputDirty = true;
-
-		// Dirty detection
-		std::weak_ptr<const Scene> m_lastScene;
-		uint32_t m_lastSceneVersion = 0;
-
-		// Internal rendering methods
-		void initializeEmbree();
-		void cleanupEmbree();
-		void resetAccumulation();
-		void resizeBuffers();
-		void updateOutputBuffer();
-		glm::vec4 traceRay(const Ray &ray, uint32_t &rngState) const;
 	};
 
 }

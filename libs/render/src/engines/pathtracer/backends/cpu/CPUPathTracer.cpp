@@ -2,6 +2,16 @@
 #include <embree4/rtcore.h>
 #include <algorithm> // For std::clamp
 
+#include <cassert>
+#include <memory>
+
+#include <ranges>
+
+#include "render/Scene.h"
+#include "render/Types.h"
+
+#include "render/Color.h"
+
 namespace render
 {
 
@@ -9,6 +19,9 @@ namespace render
 	{
 		// Initialize Embree device and setup ray tracing acceleration structures
 		// This will contain the logic currently in EmbreeRenderTarget constructor
+
+		m_renderSettings = std::make_shared<RenderSettings>();
+		initialize_embree();
 	}
 
 	CPUPathTracer::~CPUPathTracer()
@@ -17,162 +30,118 @@ namespace render
 		// This will contain the logic currently in EmbreeRenderTarget destructor
 	}
 
-	void CPUPathTracer::startProgressive(std::shared_ptr<const Scene> scene, std::shared_ptr<RenderSettings> settings)
-	{
-		// Store new scene and settings
-		m_scene = scene;
-		m_renderSettings = settings;
-
-		// Check for changes that require resets
-		bool sceneChanged = (m_lastScene.lock() != scene);
-		bool settingsChanged = settings->isDirty();
-
-		if (sceneChanged)
-		{
-			// Scene pointer changed - full rebuild needed
-			// TODO: Rebuild Embree scene when we implement it
-			resizeBuffers(); // May need resize for new scene
-			resetAccumulation();
-			m_lastScene = scene;
-			// TODO: m_lastSceneVersion = scene ? scene->getVersion() : 0;
-		}
-		else if (settingsChanged)
-		{
-			// Settings changed - may need buffer resize
-			resizeBuffers();
-			resetAccumulation();
-			settings->clearDirty();
-		}
-
-		m_progressiveRunning = true;
-	}
-
-	void CPUPathTracer::stopProgressive()
-	{
-		m_progressiveRunning = false;
-	}
-
-	bool CPUPathTracer::isProgressiveReady() const
-	{
-		// For now, always ready when progressive is running
-		return m_progressiveRunning;
-	}
-
-	const std::vector<uint32_t> &CPUPathTracer::getProgressiveResult()
-	{
-		if (m_outputDirty)
-		{
-			updateOutputBuffer();
-			m_outputDirty = false;
-		}
-		return m_outputBuffer;
-	}
-
 	void CPUPathTracer::render()
 	{
-		for (uint32_t y = 0; y < getHeight(); ++y)
-		{
-			for (uint32_t x = 0; x < getWidth(); ++x)
-			{
+		assert(m_scene && "Scene not set before rendering");
+		invalidate();
 
-				uint8_t r = (x * 255) / getWidth();
-				uint8_t g = (y * 255) / getHeight();
-				uint8_t b = 128;
-				uint8_t a = 255;
-				// Generate and trace rays for each pixel
-				m_outputBuffer[y * getWidth() + x] = (r << 24) | (g << 16) | (b << 8) | (a << 0);
+		// Perform path tracing here using Embree
+
+		for (uint32_t y = 0; y < m_render_result.height; y++)
+		{
+			for (uint32_t x = 0; x < m_render_result.width; x++)
+			{
+				// Simple gradient based on pixel position and frame count
+				float r = (float)x / (float)m_render_result.width;
+				float g = (float)y / (float)m_render_result.height;
+				float b = 0.5f;
+				float a = 1.0f;
+
+				m_accumulation_buffer[4 * (y * m_render_result.width + x) + 0] += r;
+				m_accumulation_buffer[4 * (y * m_render_result.width + x) + 1] += g;
+				m_accumulation_buffer[4 * (y * m_render_result.width + x) + 2] += b;
+				m_accumulation_buffer[4 * (y * m_render_result.width + x) + 3] += a;
 			}
 		}
+
+		m_frameCount++;
 	}
 
-	void CPUPathTracer::initializeEmbree()
+	const PathTracer::RenderResult &CPUPathTracer::get_render_result()
 	{
-		// Embree device initialization and scene setup
-		// Will contain logic from current Scene::init_embree()
-	}
-
-	void CPUPathTracer::cleanupEmbree()
-	{
-		// Cleanup Embree device and scene
-		// Will contain cleanup logic from current code
-	}
-
-	void CPUPathTracer::resetAccumulation()
-	{
-		m_frameCount = 0;
-		// Clear accumulation buffer to zero
-		std::fill(m_accumulationBuffer.begin(), m_accumulationBuffer.end(), 0.0f);
-		m_outputDirty = true; // Output needs update
-	}
-
-	void CPUPathTracer::resizeBuffers()
-	{
-		if (!m_renderSettings)
-			return;
-
-		uint32_t width = m_renderSettings->getWidth();
-		uint32_t height = m_renderSettings->getHeight();
-		uint32_t pixelCount = width * height;
-
-		// Resize accumulation buffer (4 floats per pixel: RGBA)
-		m_accumulationBuffer.resize(pixelCount * 4, 0.0f);
-
-		// Resize output buffer (1 uint32_t per pixel: packed RGBA8)
-		m_outputBuffer.resize(pixelCount, 0);
-
-		m_outputDirty = true;
-	}
-
-	void CPUPathTracer::updateOutputBuffer()
-	{
-		return;
-		// std::fill(m_outputBuffer.begin(), m_outputBuffer.end(), 0xffffffff); // Default to black
-		// return ;
-		if (!m_renderSettings || m_frameCount == 0)
+		assert(m_frameCount > 0 && "No frames rendered yet");
+		// Convert accumulation buffer to 8-bit RGBA for output
+		for (uint32_t y = 0; y < m_render_result.height; y++)
 		{
-			// Fill with black if no frames rendered
-			std::fill(m_outputBuffer.begin(), m_outputBuffer.end(), 0xFF000000); // Black with full alpha
-			return;
+			for (uint32_t x = 0; x < m_render_result.width; x++)
+			{
+				uint32_t idx = y * m_render_result.width + x;
+				float r = m_accumulation_buffer[4 * idx + 0] / (float)m_frameCount;
+				float g = m_accumulation_buffer[4 * idx + 1] / (float)m_frameCount;
+				float b = m_accumulation_buffer[4 * idx + 2] / (float)m_frameCount;
+				float a = m_accumulation_buffer[4 * idx + 3] / (float)m_frameCount;
+
+				// Apply exposure
+				// r *= m_renderSettings->getExposure();
+				// g *= m_renderSettings->getExposure();
+				// b *= m_renderSettings->getExposure();
+
+				// Clamp to [0,1]
+				r = std::clamp(r, 0.0f, 1.0f);
+				g = std::clamp(g, 0.0f, 1.0f);
+				b = std::clamp(b, 0.0f, 1.0f);
+				a = std::clamp(a, 0.0f, 1.0f);
+
+				m_render_result.image_buffer[idx] = rgba_to_uint32((uint8_t)(r * 255.0f), (uint8_t)(g * 255.0f), (uint8_t)(b * 255.0f), (uint8_t)(a * 255.0f));
+			}
 		}
 
-		uint32_t pixelCount = m_renderSettings->getWidth() * m_renderSettings->getHeight();
-		float exposure = m_renderSettings->getExposure();
-		float invFrameCount = 1.0f / static_cast<float>(m_frameCount);
+		return m_render_result;
+	}
 
-		for (uint32_t i = 0; i < pixelCount; ++i)
+	void CPUPathTracer::invalidate()
+	{
+		// if (m_scene->hasChanges())
+		// {
+		// 	// TODO: update embree
+		// 	//  bitmask for different changes, some require embree rebuild some dont
+		// 	m_frameCount = 0;
+		// 	m_outputDirty = true;
+		// }
+		if (m_renderSettings->isDirty())
 		{
-			// Get accumulated RGBA values
-			float r = m_accumulationBuffer[i * 4 + 0] * invFrameCount;
-			float g = m_accumulationBuffer[i * 4 + 1] * invFrameCount;
-			float b = m_accumulationBuffer[i * 4 + 2] * invFrameCount;
-			float a = m_accumulationBuffer[i * 4 + 3] * invFrameCount;
+			m_frameCount = 0;
+			m_outputDirty = true;
+		}
 
-			// Apply exposure tone mapping
-			r *= exposure;
-			g *= exposure;
-			b *= exposure;
+		if (m_render_result.width != m_renderSettings->getWidth() || m_render_result.height != m_renderSettings->getHeight())
+		{
+			m_render_result.width = m_renderSettings->getWidth();
+			m_render_result.height = m_renderSettings->getHeight();
+			m_accumulation_buffer.resize(m_render_result.width * m_render_result.height * 4);
+			m_render_result.image_buffer.resize(m_render_result.width * m_render_result.height);
+			std::ranges::fill(m_accumulation_buffer, 0.0f);
+			m_frameCount = 0;
+			m_outputDirty = true;
+		}
 
-			// Clamp and convert to 8-bit
-			// uint32_t r8 = static_cast<uint32_t>(std::clamp(r * 255.0f, 0.0f, 255.0f));
-			// uint32_t g8 = static_cast<uint32_t>(std::clamp(g * 255.0f, 0.0f, 255.0f));
-			// uint32_t b8 = static_cast<uint32_t>(std::clamp(b * 255.0f, 0.0f, 255.0f));
-			// uint32_t a8 = static_cast<uint32_t>(std::clamp(a * 255.0f, 0.0f, 255.0f));
-
-			uint32_t r8 = 255;
-			uint32_t g8 = 255;
-			uint32_t b8 = 255;
-			uint32_t a8 = 255;
-
-			// Pack into RGBA8 (assuming little-endian: ABGR in memory)
-			m_outputBuffer[i] = (a8 << 24) | (b8 << 16) | (g8 << 8) | r8;
+		if (m_frameCount == 0)
+		{
+			std::ranges::fill(m_accumulation_buffer, 0.0f);
 		}
 	}
 
-	glm::vec4 CPUPathTracer::traceRay(const Ray &ray, uint32_t &rngState) const
+	// TODO: error handling
+	bool CPUPathTracer::initialize_embree()
 	{
-		// Path tracing ray traversal and lighting calculation
-		// Will contain the main path tracing algorithm from current code
-		return glm::vec4(0.0f);
+		assert(!m_embreeDevice && "Embree device already initialized");
+		m_embreeDevice = rtcNewDevice("verbose=1,threads=0");
+		assert(m_embreeDevice && "Failed to create Embree device");
+
+		assert(!m_embreeScene && "Embree scene already initialized");
+		m_embreeScene = rtcNewScene(m_embreeDevice);
+		assert(m_embreeScene && "Failed to create Embree scene");
+
+		return m_embreeDevice != nullptr && m_embreeScene != nullptr;
 	}
 
+	void CPUPathTracer::cleanup_embree()
+	{
+		assert(m_embreeDevice && "Embree device not initialized");
+		rtcReleaseDevice(m_embreeDevice);
+		m_embreeDevice = nullptr;
+		assert(m_embreeScene && "Embree scene not initialized");
+		rtcReleaseScene(m_embreeScene);
+		m_embreeScene = nullptr;
+	}
 }

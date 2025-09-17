@@ -1,4 +1,4 @@
-#include "render/RenderEngine.h"
+#include "render/PathTracer.h"
 
 #include "engines/pathtracer/backends/cpu/CPUPathTracer.h"
 
@@ -6,7 +6,7 @@
 
 namespace render
 {
-	static std::unique_ptr<RenderEngine> createRenderEngine(BackendType backend)
+	std::unique_ptr<PathTracer> PathTracer::create_path_tracer(BackendType backend)
 	{
 		switch (backend)
 		{
