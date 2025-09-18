@@ -9,12 +9,8 @@
 #include <iostream>
 
 #include "renderer/GraphicsContext.h"
-#include "renderer/renderer.h"
-#include "renderer/embree/EmbreeRenderTarget.h"
 
 #include <SDL3/SDL.h>
-
-#include "scene/Scene.h"
 
 #include <embree4/rtcore.h>
 
@@ -94,52 +90,6 @@ App::App()
 	ImGui_ImplSDLRenderer3_Init(GraphicsContext::getSDLRenderer());
 
 	{
-		m_scene = std::make_shared<Scene>();
-
-		// Initialize Embree
-		m_scene->init_embree();
-
-		// Enable fast floating point modes for better Embree performance (x86/x64 only)
-#ifdef HAS_X86_SIMD
-		_MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
-		_MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
-#endif
-
-		// Add initial spheres
-		m_scene->add_sphere(glm::vec3(0.0f, -102.0f, 5.0f), 100.0f); // Ground sphere
-		m_scene->add_sphere(glm::vec3(0.0f, -1.0f, 5.0f), 1.0f);	 // Main sphere
-
-		// Add grid of small spheres
-		int dims = 5;
-		for (int x = -dims; x <= dims; x += 2)
-		{
-			for (int y = -dims; y <= dims; y += 2)
-			{
-				m_scene->add_sphere(glm::vec3((float)x, (float)y, 10.0f), 0.5f);
-			}
-		}
-
-		// Load HDR environment map
-		if (!m_scene->load_environment_map("/Users/imisumi/Desktop/software-path-tracer/assets/lonely_road_afternoon_2k.exr"))
-		{
-			// if (!m_scene->load_environment_map("assets/climbing_gym_1k.exr")) {
-			std::cerr << "Warning: Failed to load HDR environment map" << std::endl;
-		}
-
-		// Create render target with initial size - Embree only
-		m_render_target = RenderTargetFactory::create(256, 256);
-	}
-
-	{
-		// m_render_engine = render::RenderEngine::createRenderEngine(render::BackendType::CPU_EMBREE);
-		// m_render_settings = std::make_shared<render::RenderSettings>();
-		// m_render_settings->setResolution(512, 512);
-		// m_render_settings->setSamplesPerPixel(64);
-		// m_render_settings->setMaxBounces(8);
-		// m_render_settings->setExposure(1.0f);
-
-		// m_render_engine->startProgressive(nullptr, m_render_settings);
-
 		m_path_tracer = render::PathTracer::create_path_tracer(render::PathTracer::BackendType::CPU_EMBREE);
 		m_render_scene = std::make_shared<render::Scene>();
 		m_render_scene->addSphere(1.0f, 0, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.0f, 5.0f)));
@@ -153,9 +103,6 @@ App::App()
 				m_render_scene->addSphere(0.5f, 0, glm::translate(glm::mat4(1.0f), glm::vec3((float)x, (float)y, 10.0f)));
 			}
 		}
-
-		m_render_scene->setEnvironmentMap("/Users/imisumi/Desktop/software-path-tracer/assets/lonely_road_afternoon_2k.exr");
-
 
 		// Initialize render settings
 		auto render_settings = std::make_shared<render::RenderSettings>();
@@ -259,8 +206,8 @@ void App::run()
 				m_viewport_dimensions = new_viewport_dimensions;
 
 				// Recreate render target with new size - Embree only
-				m_render_target = RenderTargetFactory::create((int)m_viewport_dimensions.x,
-															  (int)m_viewport_dimensions.y);
+				// m_render_target = RenderTargetFactory::create((int)m_viewport_dimensions.x,
+				// 											  (int)m_viewport_dimensions.y);
 			}
 
 			{
@@ -268,20 +215,13 @@ void App::run()
 				const auto &result = m_path_tracer->get_render_result();
 				if (result.width > 0 && result.height > 0)
 				{
-					// Upload to SDL texture
-					if (auto *embree_target = dynamic_cast<EmbreeRenderTarget *>(m_render_target.get()))
-					{
-						SDL_UpdateTexture((SDL_Texture *)test_tex->get_texture(), nullptr,
-										  result.image_buffer.data(),
-										  result.width * sizeof(uint32_t));
-					}
-
-					// printf("Sample %d\n", m_render_engine->getCurrentSampleCount());
+					
+					SDL_UpdateTexture((SDL_Texture *)test_tex->get_texture(), nullptr,
+									  result.image_buffer.data(),
+									  result.width * sizeof(uint32_t));
 				}
 			}
 
-			// Use static renderer with render target
-			Renderer::render(*m_scene, *m_render_target, frame);
 			frame++;
 
 			// Calculate display size based on viewport mode
@@ -311,12 +251,6 @@ void App::run()
 				}
 			}
 
-			// Display texture - Embree only
-			if (auto *embree_target = dynamic_cast<EmbreeRenderTarget *>(m_render_target.get()))
-			{
-				ImGui::Image(embree_target->getTexture().get()->get_texture(), display_size);
-			}
-
 			{
 				ImGui::Image((SDL_Texture *)test_tex->get_texture(), display_size);
 			}
@@ -340,8 +274,6 @@ void App::run()
 
 			ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
 
-			ImGui::Text("Viewport size: %d x %d", m_render_target->getWidth(), m_render_target->getHeight());
-
 
 			// Viewport mode selection
 			ImGui::Separator();
@@ -359,106 +291,15 @@ void App::run()
 			ImGui::Separator();
 			ImGui::Text("Renderer Backend: Embree");
 
-			// Ray packet size control for Embree - removed since only single rays are supported
-			if (auto *embree_target = dynamic_cast<EmbreeRenderTarget *>(m_render_target.get()))
-			{
-				ImGui::Separator();
-				ImGui::Text("Embree Settings:");
-				ImGui::Text("Using single ray intersections (rtcIntersect1)");
-			}
 
 			// Tonemapping controls
 			ImGui::Separator();
-			ImGui::Text("Tonemapping:");
-			if (auto *embree_target = dynamic_cast<EmbreeRenderTarget *>(m_render_target.get()))
-			{
-				ImGui::Checkbox("Auto Exposure", &embree_target->m_auto_exposure);
-
-				if (!embree_target->m_auto_exposure)
-				{
-					if (ImGui::SliderFloat("Exposure", &embree_target->m_exposure, 0.1f, 5.0f))
-					{
-						// No need to reset frame counter - tonemapping is applied in real-time
-					}
-				}
-				else
-				{
-					ImGui::SliderFloat("Target Luminance", &embree_target->m_target_luminance, 0.05f, 0.5f);
-					ImGui::Text("Auto Exposure: %.2f", embree_target->calculate_auto_exposure());
-				}
-			}
 
 			// Debug options
 			ImGui::Separator();
 			ImGui::Text("Debug Options:");
-			bool debug_normals_changed = ImGui::Checkbox("Debug Normals", &m_scene->debug_normals);
-			if (debug_normals_changed)
-			{
-				frame = 1; // Reset frame counter to clear accumulated samples
-			}
 
-			// spheres
 			ImGui::Separator();
-			const SphereData &sphere_data = m_scene->get_sphere_data();
-			ImGui::Text("Spheres: %d", (int)sphere_data.size());
-
-			// Add/Remove sphere controls
-			static float new_sphere_center[3] = {0.0f, 0.0f, 5.0f};
-			static float new_sphere_radius = 1.0f;
-
-			ImGui::DragFloat3("New Center", new_sphere_center, 0.1f);
-			ImGui::DragFloat("New Radius", &new_sphere_radius, 0.1f, 0.1f, 100.0f);
-
-			if (ImGui::Button("Add Sphere"))
-			{
-				m_scene->add_sphere(glm::vec3(new_sphere_center[0], new_sphere_center[1], new_sphere_center[2]), new_sphere_radius);
-				frame = 1; // Reset frame counter to clear accumulated samples
-			}
-
-			ImGui::SameLine();
-			if (ImGui::Button("Remove Last") && sphere_data.size() > 0)
-			{
-				m_scene->remove_sphere((uint32_t)sphere_data.size() - 1);
-				frame = 1; // Reset frame counter to clear accumulated samples
-			}
-
-			// Edit existing spheres
-			for (size_t i = 0; i < sphere_data.size(); ++i)
-			{
-				ImGui::PushID((int)i);
-
-				bool sphere_changed = false;
-				ImGui::Text("Sphere %d", (int)i);
-
-				float center[3] = {sphere_data.cx[i], sphere_data.cy[i], sphere_data.cz[i]};
-				if (ImGui::DragFloat3("Center", center, 0.1f))
-				{
-					sphere_changed = true;
-				}
-
-				float radius = sphere_data.radii[i];
-				if (ImGui::DragFloat("Radius", &radius, 0.1f, 0.1f, 100.0f))
-				{
-					sphere_changed = true;
-				}
-
-				if (sphere_changed)
-				{
-					m_scene->update_sphere((uint32_t)i, glm::vec3(center[0], center[1], center[2]), radius, sphere_data.material_indices[i]);
-					frame = 1; // Reset frame counter to clear accumulated samples
-				}
-
-				ImGui::SameLine();
-				if (ImGui::Button("Delete"))
-				{
-					m_scene->remove_sphere((uint32_t)i);
-					frame = 1; // Reset frame counter to clear accumulated samples
-					ImGui::PopID();
-					break; // Exit loop since indices changed
-				}
-
-				ImGui::PopID();
-			}
 
 			ImGui::End();
 		}

@@ -7,12 +7,13 @@
 #include <vector>
 #include <memory>
 
-#include "renderer/RenderTargetFactory.h"
 
 #include "render/Types.h"
 
 #include "render/PathTracer.h"
 #include "render/Scene.h"
+
+#include "renderer/Texture2D.h"
 
 struct SDL_Window;
 struct SDL_Renderer;
@@ -48,14 +49,9 @@ private:
 	ViewportMode m_viewport_mode = ViewportMode::CUSTOM_SIZE_512;
 	std::vector<uint32_t> m_viewport_data;
 
-	std::unique_ptr<RenderTarget> m_render_target;
-	std::shared_ptr<class Scene> m_scene;
-
 	std::unique_ptr<Texture2D> test_tex;
 
 private:
-	// std::unique_ptr<render::RenderEngine> m_render_engine;
-	// std::shared_ptr<render::RenderSettings> m_render_settings;
 
 	std::unique_ptr<render::PathTracer> m_path_tracer;
 	std::shared_ptr<render::Scene> m_render_scene;
