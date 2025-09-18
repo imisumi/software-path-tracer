@@ -27,6 +27,7 @@ elseif(UNIX)
 endif()
 
 find_package(embree 4 REQUIRED)
+find_package(OpenImageIO REQUIRED)
 
 # Library source files
 file(GLOB_RECURSE RENDER_SOURCES src/*.cpp)
@@ -48,6 +49,8 @@ target_link_libraries(render
     PUBLIC
         glm
         embree
+	PRIVATE
+		OpenImageIO::OpenImageIO
 )
 
 # Compiler features

@@ -18,6 +18,8 @@
 
 #include <embree4/rtcore.h>
 
+#include <glm/gtc/matrix_transform.hpp>
+
 // Factory handles the specific implementation
 
 // Cross-platform SIMD includes
@@ -139,13 +141,29 @@ App::App()
 		// m_render_engine->startProgressive(nullptr, m_render_settings);
 
 		m_path_tracer = render::PathTracer::create_path_tracer(render::PathTracer::BackendType::CPU_EMBREE);
-		
+		m_render_scene = std::make_shared<render::Scene>();
+		m_render_scene->addSphere(1.0f, 0, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.0f, 5.0f)));
+		m_render_scene->addSphere(100.0f, 0, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -102.0f, 5.0f)));
+
+		int dims = 5;
+		for (int x = -dims; x <= dims; x += 2)
+		{
+			for (int y = -dims; y <= dims; y += 2)
+			{
+				m_render_scene->addSphere(0.5f, 0, glm::translate(glm::mat4(1.0f), glm::vec3((float)x, (float)y, 10.0f)));
+			}
+		}
+
+		m_render_scene->setEnvironmentMap("/Users/imisumi/Desktop/software-path-tracer/assets/lonely_road_afternoon_2k.exr");
+
+
 		// Initialize render settings
 		auto render_settings = std::make_shared<render::RenderSettings>();
 		render_settings->setResolution(512, 512);
 		render_settings->setSamplesPerPixel(64);
 		render_settings->setMaxBounces(8);
 		m_path_tracer->set_settings(render_settings);
+		m_path_tracer->set_scene(m_render_scene);
 
 		test_tex = std::make_unique<Texture2D>(512, 512, Texture2D::Format::RGBA8);
 	}

@@ -12,6 +12,7 @@
 #include "render/Types.h"
 
 #include "render/PathTracer.h"
+#include "render/Scene.h"
 
 struct SDL_Window;
 struct SDL_Renderer;
@@ -57,5 +58,6 @@ private:
 	// std::shared_ptr<render::RenderSettings> m_render_settings;
 
 	std::unique_ptr<render::PathTracer> m_path_tracer;
+	std::shared_ptr<render::Scene> m_render_scene;
 	// std::shared_ptr<render::RenderSettings> m_render_settings;
 };

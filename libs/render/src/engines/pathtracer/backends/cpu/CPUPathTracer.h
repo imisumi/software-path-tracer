@@ -3,6 +3,7 @@
 #include "render/PathTracer.h"
 #include <vector>
 #include <memory>
+#include <glm/glm.hpp>
 
 // Forward declarations for Embree types (avoid including heavy headers in public interface)
 
@@ -42,6 +43,16 @@ namespace render
 
 		bool initialize_embree();
 		void cleanup_embree();
+
+		uint32_t get_rng_state(uint32_t width, uint32_t height, uint32_t x, uint32_t y, uint32_t frame) const;
+		glm::vec4 trace_ray(const glm::vec3 &ray_origin, const glm::vec3 &ray_direction, uint32_t &rng_state) const;
+
+		glm::vec3 sample_sky(const glm::vec3 &direction) const;
+
+		float random_float(uint32_t &state) const;
+		glm::vec3 get_random_bounche(const glm::vec3 &normal, uint32_t &state) const;
+
+		void rebuild_scene();
 
 	private:
 
