@@ -16,6 +16,8 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "render/Log.h"
+
 // Factory handles the specific implementation
 
 // Cross-platform SIMD includes
@@ -36,6 +38,8 @@ static uint32_t ToColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 {
 	return (r << 24) | (g << 16) | (b << 8) | (a << 0);
 }
+
+
 
 App *App::s_Instance = nullptr;
 
@@ -88,6 +92,19 @@ App::App()
 
 	ImGui_ImplSDL3_InitForSDLRenderer(m_window, GraphicsContext::getSDLRenderer());
 	ImGui_ImplSDLRenderer3_Init(GraphicsContext::getSDLRenderer());
+
+
+
+	render::Log::set_level(render::LogLevel::Debug);
+	render::Log::set_callback([](render::LogLevel level, std::string_view msg) {
+		const char* level_str = "INFO";
+		switch(level) {
+			case render::LogLevel::Debug: level_str = "DEBUG"; break;
+			case render::LogLevel::Warn:  level_str = "WARN";  break;
+			case render::LogLevel::Error: level_str = "ERROR"; break;
+		}
+		std::cout << std::format("[RENDER] [{}] {}\n", level_str, msg);
+	});
 
 	{
 		m_path_tracer = render::PathTracer::create_path_tracer(render::PathTracer::BackendType::CPU_EMBREE);

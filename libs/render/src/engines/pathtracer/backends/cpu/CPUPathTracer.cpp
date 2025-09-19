@@ -15,6 +15,10 @@
 #include <glm/gtc/constants.hpp>
 #include <iostream>
 
+#include "render/Log.h"
+
+#include "render_assert.h"
+
 namespace render
 {
 
@@ -24,6 +28,7 @@ namespace render
 		// This will contain the logic currently in EmbreeRenderTarget constructor
 
 		std::cout << "Initializing CPU Path Tracer with Embree backend..." << std::endl;
+		render::Log::info("Initializing CPU Path Tracer with Embree backend...");
 
 		m_renderSettings = std::make_shared<RenderSettings>();
 		initialize_embree();
@@ -37,7 +42,8 @@ namespace render
 
 	void CPUPathTracer::render()
 	{
-		assert(m_scene && "Scene not set before rendering");
+		verify(m_embreeDevice && m_embreeScene, "Embree not initialized");
+		verify(m_scene != nullptr, "Scene not set before rendering");
 		invalidate();
 
 		// Perform path tracing here using Embree
@@ -52,19 +58,6 @@ namespace render
 		{
 			for (uint32_t x = 0; x < width; x++)
 			{
-				// Simple gradient based on pixel position and frame count
-				// float r = (float)x / (float)width;
-				// float g = (float)y / (float)height;
-				// float b = 0.5f;
-				// float a = 1.0f;
-
-				// m_accumulation_buffer[4 * (y * width + x) + 0] += r;
-				// m_accumulation_buffer[4 * (y * width + x) + 1] += g;
-				// m_accumulation_buffer[4 * (y * width + x) + 2] += b;
-				// m_accumulation_buffer[4 * (y * width + x) + 3] += a;
-
-
-
 				uint32_t rng_state = get_rng_state(width, height, x, y, m_frameCount + 1);
 				glm::vec3 ray_origin(0.0f, 0.0f, 0.0f);
 
@@ -334,6 +327,8 @@ namespace render
 	{
 		assert(m_scene && "Scene not set before rebuilding Embree scene");
 		assert(m_embreeScene && "Embree scene not initialized");
+
+		render::Log::info("Rebuilding Embree scene from application scene...");
 
 		const auto& objects = m_scene->getAllObjects();
 
