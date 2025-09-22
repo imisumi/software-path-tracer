@@ -29,18 +29,6 @@
 
 static void SetDarkThemeColors();
 
-static void sdl_error_callback()
-{
-	fprintf(stderr, "SDL Error: %s\n", SDL_GetError());
-}
-
-static uint32_t ToColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a)
-{
-	return (r << 24) | (g << 16) | (b << 8) | (a << 0);
-}
-
-
-
 App *App::s_Instance = nullptr;
 
 App::App()
@@ -109,15 +97,27 @@ App::App()
 	{
 		m_path_tracer = render::PathTracer::create_path_tracer(render::PathTracer::BackendType::CPU_EMBREE);
 		m_render_scene = std::make_shared<render::Scene>();
-		m_render_scene->addSphere(1.0f, 0, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -1.0f, 5.0f)));
-		m_render_scene->addSphere(100.0f, 0, glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -102.0f, 5.0f)));
+		
+		{
+			auto sphere = m_render_scene->CreateNode<render::SphereObject>("123");
+			sphere->SetRadius(1.0f);
+			sphere->SetPosition(glm::vec3(0.0f, -1.0f, 5.0f));
+		}
+
+		{
+			auto sphere = m_render_scene->CreateNode<render::SphereObject>("123");
+			sphere->SetRadius(100.0f);
+			sphere->SetPosition(glm::vec3(0.0f, -102.0f, 5.0f));
+		}
 
 		int dims = 5;
 		for (int x = -dims; x <= dims; x += 2)
 		{
 			for (int y = -dims; y <= dims; y += 2)
 			{
-				m_render_scene->addSphere(0.5f, 0, glm::translate(glm::mat4(1.0f), glm::vec3((float)x, (float)y, 10.0f)));
+				auto s = m_render_scene->CreateNode<render::SphereObject>("sphere");
+				s->SetRadius(0.5f);
+				s->SetPosition(glm::vec3((float)x, (float)y, 10.0f));
 			}
 		}
 
@@ -308,7 +308,6 @@ void App::run()
 			ImGui::Separator();
 			ImGui::Text("Renderer Backend: Embree");
 
-
 			// Tonemapping controls
 			ImGui::Separator();
 
@@ -413,14 +412,9 @@ static void SetDarkThemeColors()
 	colors[ImGuiCol_TabDimmedSelected] = ImVec4(0.18f, 0.18f, 0.18f, 1.00f);		 // Selected but unfocused tab
 	colors[ImGuiCol_TabDimmedSelectedOverline] = ImVec4(0.18f, 0.18f, 0.18f, 1.00f); // Overline of unfocused selected tab
 
-	// For backward compatibility with older ImGui versions
-	// These might be what your version is using
-	if (ImGuiCol_TabActive != ImGuiCol_TabSelected)
-	{																			  // Only set if they're different (to avoid warnings)
-		colors[ImGuiCol_TabActive] = ImVec4(0.22f, 0.22f, 0.22f, 1.00f);		  // Active tab (old name)
-		colors[ImGuiCol_TabUnfocused] = ImVec4(0.13f, 0.13f, 0.13f, 0.86f);		  // Unfocused tab (old name)
-		colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.18f, 0.18f, 0.18f, 1.00f); // Unfocused active tab (old name)
-	}
+	colors[ImGuiCol_TabActive] = ImVec4(0.22f, 0.22f, 0.22f, 1.00f);		  // Active tab (old name)
+	colors[ImGuiCol_TabUnfocused] = ImVec4(0.13f, 0.13f, 0.13f, 0.86f);		  // Unfocused tab (old name)
+	colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.18f, 0.18f, 0.18f, 1.00f); // Unfocused active tab (old name)
 
 	// Docking colors
 	colors[ImGuiCol_DockingPreview] = ImVec4(0.30f, 0.30f, 0.30f, 0.40f); // Preview when docking

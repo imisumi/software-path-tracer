@@ -174,6 +174,8 @@ namespace render
 
 		// embree_geometry_id = rtcAttachGeometry(scene, sphere_geometry);
 
+		rtcCommitScene(m_embreeScene);
+
 		return m_embreeDevice != nullptr && m_embreeScene != nullptr;
 	}
 
@@ -330,27 +332,68 @@ namespace render
 
 		render::Log::info("Rebuilding Embree scene from application scene...");
 
-		const auto& objects = m_scene->getAllObjects();
+		// const auto& objects = m_scene->getAllObjects();
 
-		for (const auto& obj : objects)
+		// for (const auto& obj : objects)
+		// {
+		// 	switch (obj->getType())
+		// 	{
+		// 		case Scene::NodeType::Sphere:
+		// 		{
+		// 			const auto* sphere = static_cast<const Scene::SphereObject*>(obj.get());
+
+					// RTCGeometry sphere_geometry = rtcNewGeometry(m_embreeDevice, RTC_GEOMETRY_TYPE_SPHERE_POINT);
+		// 			struct SpherePoint { float x, y, z, radius; };
+		// 			SpherePoint* vertices = (SpherePoint*)rtcSetNewGeometryBuffer(sphere_geometry, RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT4, sizeof(SpherePoint), 1);
+		// 			vertices[0].x = sphere->transform[3][0];
+		// 			vertices[0].y = sphere->transform[3][1];
+		// 			vertices[0].z = sphere->transform[3][2];
+		// 			vertices[0].radius = sphere->radius;
+
+		// 			rtcCommitGeometry(sphere_geometry);
+		// 			rtcAttachGeometry(m_embreeScene, sphere_geometry);
+		// 			rtcReleaseGeometry(sphere_geometry);
+		// 			break;
+		// 		}
+		// 	}
+		// }
+
+
+		auto all_nodes = m_scene->GetAllNodes();
+		for (const auto& [id, node] : all_nodes)
 		{
-			switch (obj->getType())
+			std::cout << "Processing node ID: " << id << ", Name: " << node->GetName() << std::endl;
+			std::cout << "Node Type: " << static_cast<int>(node->GetType()) << std::endl;
+			switch (node->GetType())
 			{
-				case Scene::NodeType::Sphere:
+				case render::NodeType::SPHERE_OBJECT:
 				{
-					const auto* sphere = static_cast<const Scene::SphereObject*>(obj.get());
-
+					std::cout << "Creating sphere geometry for node: " << node->GetName() << std::endl;
+					const auto* sphere = static_cast<const render::SphereObject*>(node);
+					// Create Embree geometry for sphere
 					RTCGeometry sphere_geometry = rtcNewGeometry(m_embreeDevice, RTC_GEOMETRY_TYPE_SPHERE_POINT);
-					struct SpherePoint { float x, y, z, radius; };
-					SpherePoint* vertices = (SpherePoint*)rtcSetNewGeometryBuffer(sphere_geometry, RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT4, sizeof(SpherePoint), 1);
-					vertices[0].x = sphere->transform[3][0];
-					vertices[0].y = sphere->transform[3][1];
-					vertices[0].z = sphere->transform[3][2];
-					vertices[0].radius = sphere->radius;
-
+					
+					// Set sphere vertex data (center + radius)
+					struct Vertex { float x, y, z, radius; };
+					Vertex* vertices = (Vertex*)rtcSetNewGeometryBuffer(sphere_geometry, RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT4, sizeof(Vertex), 1);
+					
+					glm::vec3 pos = sphere->GetPosition();
+					vertices[0].x = pos.x;
+					vertices[0].y = pos.y;
+					vertices[0].z = pos.z;
+					vertices[0].radius = sphere->GetRadius();
+					
+					std::cout << "Sphere position: (" << pos.x << ", " << pos.y << ", " << pos.z << "), radius: " << sphere->GetRadius() << std::endl;
+					
+					rtcSetGeometryUserData(sphere_geometry, (void*)sphere);
 					rtcCommitGeometry(sphere_geometry);
 					rtcAttachGeometry(m_embreeScene, sphere_geometry);
 					rtcReleaseGeometry(sphere_geometry);
+					break;
+				}
+				default:
+				{
+					std::cout << "Unknown node type: " << static_cast<int>(node->GetType()) << std::endl;
 					break;
 				}
 			}
