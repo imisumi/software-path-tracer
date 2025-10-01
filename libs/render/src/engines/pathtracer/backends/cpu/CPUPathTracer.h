@@ -9,6 +9,7 @@
 
 // Forward declarations
 class Scene;
+class OSLRenderer;
 
 typedef struct RTCDeviceTy *RTCDevice;
 typedef struct RTCSceneTy *RTCScene;
@@ -72,6 +73,8 @@ namespace render
 		std::vector<float> m_accumulation_buffer; // RGBARGBA... high precision
 		std::shared_ptr<RenderSettings> m_renderSettings;
 		bool m_outputDirty = true;
+
+		std::unique_ptr<OSLRenderer> m_oslRenderer;
 	};
 
 }

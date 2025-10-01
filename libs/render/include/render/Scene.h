@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Types.h"
+#include "../src/MaterialLibrary.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <vector>
@@ -139,10 +140,13 @@ namespace render
 		std::unique_ptr<SceneNode> m_rootNode;
 		std::unordered_map<NodeID, SceneNode*> m_nodeRegistry;
 		std::vector<std::unique_ptr<SceneNode>> m_nodes; // Store actual node objects
-		
+
+		// Material management
+		MaterialLibrary m_materialLibrary;
+		std::unordered_map<NodeID, MaterialDescriptor::Handle> m_nodeMaterials;
 
 		bool m_has_changes = true;
-		
+
 	public:
 		Scene()
 		: m_rootNode(std::make_unique<SceneNode>(NodeType::SCENE_ROOT, "Root"))
@@ -152,6 +156,7 @@ namespace render
 			// Cleanup all nodes - unique_ptrs will handle deletion automatically
 			m_nodeRegistry.clear();
 			m_nodes.clear();
+			m_nodeMaterials.clear();
 		}
 		
 		// Node Management
@@ -214,7 +219,51 @@ namespace render
 			m_has_changes = false;
 		}
 
-	
+		// Material Management
+		/// Set material for a node - automatically deduplicates identical materials
+		void setMaterial(NodeID nodeId, const MaterialDescriptor& desc)
+		{
+			m_nodeMaterials[nodeId] = m_materialLibrary.getOrCreate(desc);
+			m_has_changes = true;
+		}
+
+		/// Get material for a node (returns nullptr if no material set)
+		MaterialDescriptor::Handle getMaterial(NodeID nodeId) const
+		{
+			auto it = m_nodeMaterials.find(nodeId);
+			return (it != m_nodeMaterials.end()) ? it->second : nullptr;
+		}
+
+		/// Remove material from a node
+		void removeMaterial(NodeID nodeId)
+		{
+			m_nodeMaterials.erase(nodeId);
+			m_has_changes = true;
+		}
+
+		/// Register a named material for easy reuse
+		void registerNamedMaterial(const std::string& name, const MaterialDescriptor& desc)
+		{
+			m_materialLibrary.registerNamed(name, desc);
+		}
+
+		/// Get a named material
+		MaterialDescriptor::Handle getNamedMaterial(const std::string& name) const
+		{
+			return m_materialLibrary.get(name);
+		}
+
+		/// Check if a named material exists
+		bool hasNamedMaterial(const std::string& name) const
+		{
+			return m_materialLibrary.hasNamed(name);
+		}
+
+		/// Get material library for advanced usage
+		MaterialLibrary& getMaterialLibrary() { return m_materialLibrary; }
+		const MaterialLibrary& getMaterialLibrary() const { return m_materialLibrary; }
+
+
 	private:
 		void RegisterNode(SceneNode* node)
 		{

@@ -1,253 +1,242 @@
-#if 1
-
-#if 0
-#include <embree4/rtcore.h>
 #include <iostream>
-#include <vector>
-#include <limits>
-#include <array>
-#include <string>
-#include <cmath>
+#include <fstream>
+#include <filesystem>
+#include <cstring>
+#include <string_view>
+#include <OSL/oslcomp.h>
+#include <OSL/oslexec.h>
+#include <OSL/rendererservices.h>
 #include <glm/glm.hpp>
-#include <utility>
-
-struct Sphere
-{
-	float x, y, z; // center
-	float radius;
-};
-
-int main()
-{
-	// Initialize Embree device
-	RTCDevice device = rtcNewDevice(nullptr);
-	if (!device)
-	{
-		std::cerr << "Failed to create Embree device\n";
-		return -1;
-	}
-	std::cout << "Embree device created successfully" << std::endl;
-
-	// Create scene
-	RTCScene scene = rtcNewScene(device);
-
-	// Create sphere geometry
-	RTCGeometry geom = rtcNewGeometry(device, RTC_GEOMETRY_TYPE_SPHERE_POINT);
-
-	// Define some spheres
-	std::vector<Sphere> spheres = {
-		{0.0f, 0.0f, 0.0f, 1.0f},  // Sphere at origin, radius 1
-		{2.5f, 0.0f, 1.0f, 0.5f},  // Smaller sphere to the right
-		{-1.5f, 1.0f, -0.5f, 0.8f} // Another sphere
-	};
-
-	// Set vertex buffer (sphere centers and radii)
-	// Format: x, y, z, radius for each sphere
-	float *vb = (float *)rtcSetNewGeometryBuffer(geom, RTC_BUFFER_TYPE_VERTEX, 0,
-												 RTC_FORMAT_FLOAT4, 4 * sizeof(float), spheres.size());
-
-	for (size_t i = 0; i < spheres.size(); i++)
-	{
-		vb[i * 4 + 0] = spheres[i].x;	   // x
-		vb[i * 4 + 1] = spheres[i].y;	   // y
-		vb[i * 4 + 2] = spheres[i].z;	   // z
-		vb[i * 4 + 3] = spheres[i].radius; // radius
-	}
-
-	// Finalize geometry
-	rtcCommitGeometry(geom);
-
-	// Attach geometry to scene
-	unsigned int geomID = rtcAttachGeometry(scene, geom);
-	rtcReleaseGeometry(geom);
-
-	// Commit scene (builds acceleration structure)
-	rtcCommitScene(scene);
-
-	std::cout << "Scene created with " << spheres.size() << " spheres\n";
-	std::cout << "Testing ray intersections...\n\n";
-
-	// Test multiple rays
-	std::vector<std::pair<std::string, std::array<float, 6>>> test_rays = {
-		{"Ray through origin sphere", {0.0f, 0.0f, -5.0f, 0.0f, 0.0f, 1.0f}},
-		{"Ray towards right sphere", {2.5f, 0.0f, -5.0f, 0.0f, 0.0f, 1.0f}},
-		{"Ray that misses all", {10.0f, 10.0f, -5.0f, 0.0f, 0.0f, 1.0f}},
-		{"Diagonal ray", {-2.0f, -2.0f, -5.0f, 0.5f, 0.5f, 1.0f}}};
-
-	for (const auto &[name, ray_data] : test_rays)
-	{
-		RTCRayHit rayhit;
-
-		// Set up ray
-		rayhit.ray.org_x = ray_data[0];
-		rayhit.ray.org_y = ray_data[1];
-		rayhit.ray.org_z = ray_data[2];
-		rayhit.ray.dir_x = ray_data[3];
-		rayhit.ray.dir_y = ray_data[4];
-		rayhit.ray.dir_z = ray_data[5];
-		rayhit.ray.tnear = 0.0f;
-		rayhit.ray.tfar = std::numeric_limits<float>::infinity();
-		rayhit.ray.mask = 0xFFFFFFFF;
-		rayhit.ray.flags = 0;
-		rayhit.hit.geomID = RTC_INVALID_GEOMETRY_ID;
-
-		// Intersect ray with scene (simplified - no context needed for basic usage)
-		rtcIntersect1(scene, &rayhit);
-
-		std::cout << name << ":\n";
-
-		// Check if ray hit something
-		if (rayhit.hit.geomID != RTC_INVALID_GEOMETRY_ID)
-		{
-			float hit_x = rayhit.ray.org_x + rayhit.ray.tfar * rayhit.ray.dir_x;
-			float hit_y = rayhit.ray.org_y + rayhit.ray.tfar * rayhit.ray.dir_y;
-			float hit_z = rayhit.ray.org_z + rayhit.ray.tfar * rayhit.ray.dir_z;
-
-			std::cout << "  HIT! Sphere #" << rayhit.hit.primID << " at distance " << rayhit.ray.tfar << "\n";
-			std::cout << "  Hit point: (" << hit_x << ", " << hit_y << ", " << hit_z << ")\n";
-			std::cout << "  Surface normal: (" << rayhit.hit.Ng_x << ", " << rayhit.hit.Ng_y << ", " << rayhit.hit.Ng_z << ")\n";
-			std::cout << "  UV coordinates: (" << rayhit.hit.u << ", " << rayhit.hit.v << ")\n";
-		}
-		else
-		{
-			std::cout << "  MISS - Ray didn't hit any spheres\n";
-		}
-		std::cout << "\n";
-	}
-
-	// Cleanup
-	rtcReleaseScene(scene);
-	rtcReleaseDevice(device);
-
-	return 0;
-}
-
-#else
+#include <OpenImageIO/texture.h>
 
 #include "App.h"
 
-int main()
-{
+class SimpleRendererServices : public OSL::RendererServices {
+public:
+    SimpleRendererServices(OIIO::TextureSystem* texsys = nullptr) 
+        : OSL::RendererServices(texsys) {}
+
+    // Minimal required overrides - just return false/failure for now
+    // virtual bool get_matrix(OSL::ShaderGlobals* sg, OSL::Matrix44& result,
+    //                        OSL::TransformationPtr xform, float time) override {
+    //     return false;
+    // }
+    
+    // virtual bool get_matrix(OSL::ShaderGlobals* sg, OSL::Matrix44& result,
+    //                        OSL::ustringhash from, float time) override {
+    //     return false;
+    // }
+    
+    // virtual bool get_matrix(OSL::ShaderGlobals* sg, OSL::Matrix44& result,
+    //                        OSL::TransformationPtr xform) override {
+    //     return false;
+    // }
+    
+    // virtual bool get_matrix(OSL::ShaderGlobals* sg, OSL::Matrix44& result,
+    //                        OSL::ustringhash from) override {
+    //     return false;
+    // }
+
+    // virtual bool get_attribute(OSL::ShaderGlobals* sg, bool derivatives,
+    //                           OSL::ustringhash object, OSL::TypeDesc type,
+    //                           OSL::ustringhash name, void* val) override {
+    //     return false;
+    // }
+
+    // virtual bool get_userdata(bool derivatives, OSL::ustringhash name, 
+    //                          OSL::TypeDesc type, OSL::ShaderGlobals* sg, 
+    //                          void* val) override {
+    //     return false;
+    // }
+};
+
+class OSLRenderer {
+private:
+    OSL::ShadingSystem* m_shading_system;
+    OSL::ShaderGroupRef m_shader_group;
+    SimpleRendererServices* m_renderer_services;
+    std::shared_ptr<OIIO::TextureSystem> m_texture_system;
+    OSL::PerThreadInfo* m_thread_info;
+    OSL::ShadingContext* m_context;
+    
+public:
+    bool init() {
+        // Create texture system first
+        m_texture_system = OIIO::TextureSystem::create();
+        
+        // Create renderer services
+        m_renderer_services = new SimpleRendererServices(m_texture_system.get());
+        
+        // Create shading system with renderer services
+        m_shading_system = new OSL::ShadingSystem(m_renderer_services, m_texture_system.get());
+        
+        // Set OSL error reporting to verbose
+        m_shading_system->attribute("debug", 1);
+        m_shading_system->attribute("verbose", 1);
+        
+        // Tell OSL which outputs we want to use (prevents optimization from removing them)
+        OSL::ustring outputs[] = { OSL::ustring("Cout") };
+        m_shading_system->attribute("renderer_outputs", OSL::TypeDesc(OSL::TypeDesc::STRING, 1), &outputs);
+        
+        // Set shader search path
+		m_shading_system->attribute("searchpath:shader", "C:/Users/ichir/Desktop/software-path-tracer/shaders");
+        
+        // Compile shader first
+        OSL::OSLCompiler compiler;
+        std::vector<std::string> options;
+        options.push_back("-o");
+        options.push_back("C:/Users/ichir/Desktop/software-path-tracer/shaders/flat_red.oso");
+        options.push_back("C:/Users/ichir/Desktop/software-path-tracer/shaders/flat_red.osl");
+        
+        std::string stdosl_path = "C:/Users/ichir/Desktop/software-path-tracer/shaders/stdosl.h";
+        
+        if (!compiler.compile("C:/Users/ichir/Desktop/software-path-tracer/shaders/flat_red.osl", options, stdosl_path)) {
+            std::cerr << "Failed to compile shader!" << std::endl;
+            return false;
+        }
+        
+        std::cout << "Shader compiled successfully!" << std::endl;
+        
+        // Load compiled shader
+        m_shader_group = m_shading_system->ShaderGroupBegin("diffuse_group");
+        bool shader_loaded = m_shading_system->Shader(*m_shader_group, "surface", "flat_red", "flat_red");
+        if (!shader_loaded) {
+            std::cerr << "Failed to load shader 'flat_red'!" << std::endl;
+            return false;
+        }
+        std::cout << "Shader loaded successfully!" << std::endl;
+        m_shading_system->ShaderGroupEnd(*m_shader_group);
+        
+        // Create persistent thread info and context for optimization and execution
+        m_thread_info = m_shading_system->create_thread_info();
+        m_context = m_shading_system->get_context(m_thread_info);
+        
+        // Optimize the shader group
+        m_shading_system->optimize_group(m_shader_group.get(), m_context);
+        std::cout << "Shader group optimized!" << std::endl;
+        
+        return true;
+    }
+    
+    ~OSLRenderer() {
+        if (m_context) {
+            m_shading_system->release_context(m_context);
+        }
+        if (m_thread_info) {
+            m_shading_system->destroy_thread_info(m_thread_info);
+        }
+        delete m_shading_system;
+        delete m_renderer_services;
+        OIIO::TextureSystem::destroy(m_texture_system);
+    }
+    
+    glm::vec3 shade_hit(const glm::vec3& hit_point, const glm::vec3& normal) {
+        // Set up shader globals
+        OSL::ShaderGlobals sg;
+        memset(&sg, 0, sizeof(sg));
+        
+        // Set up transformation matrices (identity for simplicity)
+        OSL::Matrix44 Mshad, Mobj;
+        Mshad.makeIdentity();
+        Mobj.makeIdentity();
+        sg.shader2common = OSL::TransformationPtr(&Mshad);
+        sg.object2common = OSL::TransformationPtr(&Mobj);
+        sg.renderstate = nullptr;
+        
+        // Basic shader globals
+        sg.P = OSL::Vec3(hit_point.x, hit_point.y, hit_point.z);
+        sg.N = OSL::Vec3(normal.x, normal.y, normal.z);
+        sg.Ng = sg.N;  // Geometric normal = shading normal
+        sg.I = OSL::Vec3(0, 0, -1);  // Ray direction
+        sg.u = 0.5f; // UV coordinates
+        sg.v = 0.5f;
+        sg.time = 0.0f;
+        sg.dtime = 0.0f;
+        sg.raytype = 0;  // default ray type
+        sg.surfacearea = 1.0f;
+        
+        // Derivatives (required by OSL)
+        sg.dudx = 0.001f;  sg.dudy = 0.0f;
+        sg.dvdx = 0.0f;    sg.dvdy = 0.001f;
+        sg.dPdx = OSL::Vec3(0.001f, 0, 0);
+        sg.dPdy = OSL::Vec3(0, 0.001f, 0);
+        sg.dPdz = OSL::Vec3(0, 0, 0.001f);
+        sg.dPdu = OSL::Vec3(1, 0, 0);
+        sg.dPdv = OSL::Vec3(0, 1, 0);
+        sg.dPdtime = OSL::Vec3(0, 0, 0);
+        sg.Ps = sg.P;
+        
+        // Execute shader using pre-created context
+        std::cout << "About to execute shader..." << std::endl;
+        bool success = m_shading_system->execute(*m_context, *m_shader_group, sg);
+        std::cout << "Shader execution result: " << (success ? "SUCCESS" : "FAILED") << std::endl;
+        
+        glm::vec3 result_color(1, 0, 1); // Magenta for errors
+        
+        if (success) {
+            // Get output color
+            const OSL::ShaderSymbol* Cout_sym = m_shading_system->find_symbol(*m_shader_group, OSL::ustring("Cout"));
+            if (Cout_sym) {
+                const void* color_ptr = m_shading_system->symbol_address(*m_context, Cout_sym);
+                if (color_ptr) {
+                    OSL::Color3 osl_color = *(OSL::Color3*)color_ptr;
+                    result_color = glm::vec3(osl_color.x, osl_color.y, osl_color.z);
+                } else {
+                    std::cerr << "ERROR: Could not get symbol address for Cout" << std::endl;
+                }
+            } else {
+                std::cerr << "ERROR: Could not find symbol Cout" << std::endl;
+            }
+        } else {
+            std::cerr << "ERROR: Shader execution failed" << std::endl;
+        }
+        
+        return result_color;
+    }
+};
+
+int main() {
 	App app;
 	app.run();
 	return 0;
-}
-#endif
 
-#else
 
-#include <iostream>
-#include <vector>
+    std::cout << "Simple OSL Shader Test" << std::endl;
+	OSLRenderer osl_renderer;
 
-// Generates code for every target that this compiler can support.
-#undef HWY_TARGET_INCLUDE
-#define HWY_TARGET_INCLUDE "main.cpp" // this file
-#include <hwy/foreach_target.h>		  // must come before highway.h
-#include <hwy/highway.h>
-
-// Forward declaration for the exported function
-namespace project
-{
-	void CallMulAddLoop(const float *HWY_RESTRICT mul_array,
-						const float *HWY_RESTRICT add_array,
-						const size_t size, float *HWY_RESTRICT x_array);
-}
-
-namespace project
-{
-	namespace HWY_NAMESPACE
-	{ // required: unique per target
-
-		// Can skip hn:: prefixes if already inside hwy::HWY_NAMESPACE.
-		namespace hn = hwy::HWY_NAMESPACE;
-
-		using T = float;
-
-		// Alternative to per-function HWY_ATTR: see HWY_BEFORE_NAMESPACE
-		HWY_ATTR void MulAddLoop(const T *HWY_RESTRICT mul_array,
-								 const T *HWY_RESTRICT add_array,
-								 const size_t size, T *HWY_RESTRICT x_array)
-		{
-			const hn::ScalableTag<T> d;
-			const size_t lanes = hn::Lanes(d);
-
-			std::cout << "Using SIMD with " << lanes << " lanes per vector\n";
-			std::cout << "Target: " << hwy::TargetName(HWY_TARGET) << "\n";
-
-			for (size_t i = 0; i < size; i += lanes)
-			{
-				const auto mul = hn::Load(d, mul_array + i);
-				const auto add = hn::Load(d, add_array + i);
-				auto x = hn::Load(d, x_array + i);
-				x = hn::MulAdd(mul, x, add); // x = mul * x + add
-				hn::Store(x, d, x_array + i);
-			}
-		}
-
-	} // namespace HWY_NAMESPACE
-} // namespace project
-
-// The table of pointers to the various implementations in HWY_NAMESPACE must
-// be compiled only once (foreach_target #includes this file multiple times).
-// HWY_ONCE is true for only one of these 'compilation passes'.
-#if HWY_ONCE
-
-namespace project
-{
-
-	// This macro declares a static array used for dynamic dispatch.
-	HWY_EXPORT(MulAddLoop);
-
-	void CallMulAddLoop(const float *HWY_RESTRICT mul_array,
-						const float *HWY_RESTRICT add_array,
-						const size_t size, float *HWY_RESTRICT x_array)
-	{
-		// This must reside outside of HWY_NAMESPACE because it references (calls the
-		// appropriate one from) the per-target implementations there.
-		// For static dispatch, use HWY_STATIC_DISPATCH.
-		return HWY_DYNAMIC_DISPATCH(MulAddLoop)(mul_array, add_array, size, x_array);
+	if (osl_renderer.init()) {
+		std::cout << "OSL Renderer initialized successfully." << std::endl;
+	} else {
+		std::cout << "Failed to initialize OSL Renderer." << std::endl;
+		return -1;
 	}
 
-} // namespace project
-
-#endif // HWY_ONCE
-
-#if HWY_ONCE
-int main()
-{
-	// Create test data
-	const size_t size = 8;
-	std::vector<float> mul_array = {2.0f, 3.0f, 4.0f, 5.0f, 1.5f, 2.5f, 3.5f, 4.5f};
-	std::vector<float> add_array = {1.0f, 1.0f, 1.0f, 1.0f, 0.5f, 0.5f, 0.5f, 0.5f};
-	std::vector<float> x_array = {10.0f, 20.0f, 30.0f, 40.0f, 100.0f, 200.0f, 300.0f, 400.0f};
-
-	std::cout << "Initial values:\n";
-	std::cout << "mul: ";
-	for (const auto &val : mul_array)
-		std::cout << val << " ";
-	std::cout << "\nadd: ";
-	for (const auto &val : add_array)
-		std::cout << val << " ";
-	std::cout << "\nx:   ";
-	for (const auto &val : x_array)
-		std::cout << val << " ";
-	std::cout << "\n\n";
-
-	// Perform mul-add operation: x = mul * x + add
-	project::CallMulAddLoop(mul_array.data(), add_array.data(), size, x_array.data());
-
-	std::cout << "After MulAdd (x = mul * x + add):\n";
-	std::cout << "x:   ";
-	for (const auto &val : x_array)
-		std::cout << val << " ";
-	std::cout << "\n\n";
-
-	// Verify manually for first element: 2.0 * 10.0 + 1.0 = 21.0
-	std::cout << "Manual verification for first element:\n";
-	std::cout << "2.0 * 10.0 + 1.0 = " << (2.0f * 10.0f + 1.0f) << "\n";
-	std::cout << "Result: " << x_array[0] << "\n";
-
+	std::cout << "Created ShadingSystem" << std::endl;
+	
+	// Test shader evaluation
+	std::cout << "\nTesting shader evaluation:" << std::endl;
+	glm::vec3 test_point(0.0f, 0.0f, 0.0f);
+	glm::vec3 test_normal(0.0f, 0.0f, 1.0f);
+	
+	glm::vec3 result = osl_renderer.shade_hit(test_point, test_normal);
+	
+	std::cout << "Input point: (" << test_point.x << ", " << test_point.y << ", " << test_point.z << ")" << std::endl;
+	std::cout << "Input normal: (" << test_normal.x << ", " << test_normal.y << ", " << test_normal.z << ")" << std::endl;
+	std::cout << "Shader output: (" << result.x << ", " << result.y << ", " << result.z << ")" << std::endl;
+	
+	// Expected: (1, 0, 0) for red color
+	if (result.x == 1.0f && result.y == 0.0f && result.z == 0.0f) {
+		std::cout << "SUCCESS: Shader returned expected red color!" << std::endl;
+	} else {
+		std::cout << "FAILURE: Expected (1, 0, 0), got (" << result.x << ", " << result.y << ", " << result.z << ")" << std::endl;
+	}
+	
 	return 0;
 }
-#endif // HWY_ONCE
-#endif // 0
+
+// int main()
+// {
+// 	App app;
+// 	app.run();
+// 	return 0;
+// }

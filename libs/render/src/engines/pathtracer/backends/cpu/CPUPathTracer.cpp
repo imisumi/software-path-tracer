@@ -19,6 +19,8 @@
 
 #include "render_assert.h"
 
+#include "osl/SimpleRendererServices.h"
+
 namespace render
 {
 
@@ -32,6 +34,12 @@ namespace render
 
 		m_renderSettings = std::make_shared<RenderSettings>();
 		initialize_embree();
+		m_oslRenderer = std::make_unique<OSLRenderer>();
+		if (m_oslRenderer->init()) {
+			std::cout << "OSL Renderer initialized successfully." << std::endl;
+		} else {
+			throw std::runtime_error("Failed to initialize OSL Renderer.");
+		}
 	}
 
 	CPUPathTracer::~CPUPathTracer()
@@ -257,7 +265,9 @@ namespace render
 			}
 
 			// Update throughput
-			ray_throughput *= 0.7f;
+			// ray_throughput *= 0.7f;
+			// ray_throughput = ray_throughput * glm::vec3(0.7f);
+			ray_throughput *= m_oslRenderer->shade_hit({0.0f, 0.0f, 0.0f}, {norm_x, norm_y, norm_z});
 
 			// Russian roulette after 2 bounces
 			bounce_count++;

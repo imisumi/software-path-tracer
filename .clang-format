@@ -1,0 +1,32 @@
+# .clang-format - Code formatting configuration
+# Run: clang-format -i src/*.cpp src/*.hpp
+
+BasedOnStyle: Google
+IndentWidth: 4
+ColumnLimit: 100
+UseTab: Never
+
+# Brace styles - Always on new lines
+BreakBeforeBraces: Allman
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortBlocksOnASingleLine: Never
+
+# Includes
+SortIncludes: true
+IncludeBlocks: Regroup
+
+# # Spacing
+SpaceAfterCStyleCast: false
+SpaceBeforeParens: ControlStatements
+SpacesInParentheses: false
+
+# # Alignment
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignOperands: true
+
+# # Modern C++ features
+Cpp11BracedListStyle: true
+# Standard: c++23

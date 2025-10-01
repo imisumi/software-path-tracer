@@ -1468,6 +1468,179 @@ private:
 };
 ```
 
+### ⚡ Template Metaprogramming Optimizations
+
+#### Compile-Time Material System
+```cpp
+// Zero-runtime-cost material dispatch
+template<MaterialType Type>
+struct MaterialTraits;
+
+template<>
+struct MaterialTraits<MaterialType::Lambert> {
+    using Parameters = LambertParameters;
+    static constexpr bool hasSpecular = false;
+    static constexpr const char* shaderName = "lambert";
+};
+
+template<MaterialType Type>
+class Material {
+public:
+    using Params = typename MaterialTraits<Type>::Parameters;
+    static constexpr const char* getShaderName() {
+        return MaterialTraits<Type>::shaderName;
+    }
+    
+    const Params& getParameters() const { return m_params; }
+    
+private:
+    Params m_params;
+};
+
+// Usage: Compiler eliminates all abstraction overhead
+auto metal = Material<MaterialType::Metal>(0.8f, 0.1f);
+```
+
+#### SIMD Ray Packet Processing
+```cpp
+// Compile-time SIMD width optimization
+template<int PacketSize>
+struct SIMDTraits;
+
+template<> struct SIMDTraits<4> {
+    using Type = __m128;
+    static constexpr auto load = _mm_load_ps;
+    static constexpr auto add = _mm_add_ps;
+    static constexpr auto mul = _mm_mul_ps;
+};
+
+template<> struct SIMDTraits<8> {
+    using Type = __m256;
+    static constexpr auto load = _mm256_load_ps;
+    static constexpr auto add = _mm256_add_ps;
+    static constexpr auto mul = _mm256_mul_ps;
+};
+
+template<int PacketSize>
+class RayPacket {
+    using SIMD = SIMDTraits<PacketSize>;
+    
+public:
+    void intersectSphere(const Sphere& sphere) {
+        // Compiler generates optimal SIMD for target CPU
+        typename SIMD::Type originX = SIMD::load(&m_originX[0]);
+        // ... vectorized intersection math
+    }
+    
+private:
+    alignas(32) float m_originX[PacketSize];
+    // ... other ray components
+};
+
+// Compile-time specialization for target CPU
+using OptimalRayPacket = std::conditional_t<
+    has_avx512(), RayPacket<16>,
+    std::conditional_t<has_avx(), RayPacket<8>, RayPacket<4>>
+>;
+```
+
+#### Backend Capability Detection
+```cpp
+// Compile-time feature detection using concepts
+template<typename Backend>
+concept HasHardwareRT = requires(Backend b) {
+    b.traceRaysHardware();
+};
+
+template<typename Backend>
+concept HasDenoiser = requires(Backend b) {
+    b.denoise();
+};
+
+template<typename Backend>
+class RenderPipeline {
+public:
+    void render(const Scene& scene) {
+        if constexpr (HasHardwareRT<Backend>) {
+            m_backend.traceRaysHardware();
+        } else {
+            m_backend.traceRaysSoftware();
+        }
+        
+        if constexpr (HasDenoiser<Backend>) {
+            m_backend.denoise();
+        }
+    }
+    
+private:
+    Backend m_backend;
+};
+
+// Zero-cost backend selection
+template<GraphicsAPI API>
+auto createOptimalBackend() {
+    if constexpr (API == GraphicsAPI::OptiX) {
+        return OptixRayTracingBackend{};
+    } else if constexpr (API == GraphicsAPI::Metal) {
+        return MetalRayTracingBackend{};
+    } else {
+        return CPURayTracingBackend{};
+    }
+}
+```
+
+#### Type-Safe Compute Shader Parameters
+```cpp
+// Compile-time shader parameter validation
+template<typename... Params>
+struct ComputeShaderSignature {
+    static constexpr size_t paramCount = sizeof...(Params);
+    using ParamTuple = std::tuple<Params...>;
+};
+
+using ACESShaderSig = ComputeShaderSignature<
+    float,        // exposure
+    uint32_t,     // width
+    uint32_t,     // height  
+    Texture*      // texture
+>;
+
+template<typename Signature>
+class TypedComputeShader {
+public:
+    template<typename... Args>
+    void dispatch(Args&&... args) {
+        static_assert(sizeof...(Args) == Signature::paramCount);
+        // Compile-time type validation
+        validateParameters<0>(std::forward<Args>(args)...);
+        dispatchImpl(std::forward<Args>(args)...);
+    }
+    
+private:
+    template<size_t Index, typename First, typename... Rest>
+    void validateParameters(First&& first, Rest&&... rest) {
+        using Expected = std::tuple_element_t<Index, typename Signature::ParamTuple>;
+        static_assert(std::is_same_v<std::decay_t<First>, Expected>);
+        
+        if constexpr (sizeof...(Rest) > 0) {
+            validateParameters<Index + 1>(std::forward<Rest>(rest)...);
+        }
+    }
+};
+
+// Usage: Compile error if wrong parameter types
+auto acesShader = TypedComputeShader<ACESShaderSig>{};
+acesShader.dispatch(1.0f, 512u, 512u, texture); // ✅ 
+// acesShader.dispatch(1.0f, 512); // ❌ Compile error
+```
+
+#### Performance Benefits
+- **Zero Runtime Cost**: All dispatch resolved at compile time
+- **Type Safety**: Catch errors at compile time, not runtime
+- **SIMD Optimization**: Compiler generates optimal code for target CPU
+- **Memory Layout**: Template parameters control memory alignment
+- **Inlining**: No virtual function overhead, everything inlined
+
 ### 🔒 Thread Safety and Concurrency
 
 #### Thread-Safe Components

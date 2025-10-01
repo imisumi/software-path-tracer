@@ -7,3 +7,6 @@ vendor/embree/mac/*
 
 
 libs/render/vendor/embree/*
+libs/render/vendor/osl/*
+libs/render/vendor/win_flex_bison/*
+shaders/

@@ -58,6 +58,12 @@ add_subdirectory(vendor)
 # add_subdirectory(vendor/sdl)
 # glm now in pathtracer/vendor
 
+# Set Flex and Bison executables for Windows (must be before OSL)
+if(WIN32)
+    set(BISON_EXECUTABLE "${CMAKE_CURRENT_SOURCE_DIR}/libs/render/vendor/win_flex_bison/win_bison.exe")
+    set(FLEX_EXECUTABLE "${CMAKE_CURRENT_SOURCE_DIR}/libs/render/vendor/win_flex_bison/win_flex.exe")
+endif()
+
 # Add render library (self-contained)
 add_subdirectory(libs/render)
 
@@ -103,6 +109,7 @@ endif()
 # Configure target properties AFTER defining target
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/
 )
 
 # Precompiled headers (if enabled and pch.h exists)
@@ -148,6 +155,33 @@ if(WIN32)
             )
         endforeach()
     endif()
+    
+    # Copy OSL DLLs from prebuilt location
+    set(OSL_DLL_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/render/vendor/osl/bin")
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${OSL_DLL_SOURCE_DIR}/oslcomp.dll"
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+        COMMENT "Copying oslcomp.dll"
+    )
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${OSL_DLL_SOURCE_DIR}/oslexec.dll"
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+        COMMENT "Copying oslexec.dll"
+    )
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${OSL_DLL_SOURCE_DIR}/oslnoise.dll"
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+        COMMENT "Copying oslnoise.dll"
+    )
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${OSL_DLL_SOURCE_DIR}/oslquery.dll"
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+        COMMENT "Copying oslquery.dll"
+    )
     
     # Copy assets folder to output directory
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
