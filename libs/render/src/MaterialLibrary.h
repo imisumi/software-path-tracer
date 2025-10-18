@@ -46,6 +46,9 @@ public:
 	size_t getMaterialCount() const { return m_materials.size(); }
 	size_t getNamedCount() const { return m_namedMaterials.size(); }
 
+	/// Get the auto-generated name for a material (returns empty string if not found)
+	std::string getAutoName(MaterialDescriptor::Handle material) const;
+
 	/// Clear all materials (be careful - invalidates all handles)
 	void clear();
 
@@ -59,6 +62,12 @@ private:
 
 	// Named material lookup (name -> hash)
 	std::unordered_map<std::string, size_t> m_namedMaterials;
+
+	// Auto-generated names (hash -> auto name)
+	std::unordered_map<size_t, std::string> m_autoNames;
+
+	// Static counter for auto-naming
+	static int s_materialCounter;
 };
 
 } // namespace render

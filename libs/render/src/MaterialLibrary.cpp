@@ -3,6 +3,9 @@
 
 namespace render {
 
+// Initialize static counter
+int MaterialLibrary::s_materialCounter = 1;
+
 MaterialDescriptor::Handle MaterialLibrary::getOrCreate(const MaterialDescriptor& desc) {
 	size_t hash = desc.hash();
 
@@ -15,6 +18,11 @@ MaterialDescriptor::Handle MaterialLibrary::getOrCreate(const MaterialDescriptor
 	// Create new material instance
 	auto material = std::make_shared<MaterialDescriptor>(desc);
 	m_materials[hash] = material;
+
+	// Auto-generate a name for this material
+	std::string autoName = "Material_" + std::to_string(s_materialCounter++);
+	m_autoNames[hash] = autoName;
+
 	return material;
 }
 
@@ -64,9 +72,24 @@ std::vector<std::string> MaterialLibrary::getNamedMaterials() const {
 	return names;
 }
 
+std::string MaterialLibrary::getAutoName(MaterialDescriptor::Handle material) const {
+	if (!material) {
+		return "";
+	}
+
+	size_t hash = material->hash();
+	auto it = m_autoNames.find(hash);
+	if (it != m_autoNames.end()) {
+		return it->second;
+	}
+
+	return "";
+}
+
 void MaterialLibrary::clear() {
 	m_materials.clear();
 	m_namedMaterials.clear();
+	m_autoNames.clear();
 }
 
 } // namespace render

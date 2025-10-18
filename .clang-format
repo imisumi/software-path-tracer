@@ -1,32 +1,72 @@
-# .clang-format - Code formatting configuration
-# Run: clang-format -i src/*.cpp src/*.hpp
-
+---
 BasedOnStyle: Google
-IndentWidth: 4
+
+# Line length and indentation
 ColumnLimit: 100
+IndentWidth: 4
+TabWidth: 4
 UseTab: Never
+ContinuationIndentWidth: 4
 
-# Brace styles - Always on new lines
+# Braces - Allman style (braces on new lines)
 BreakBeforeBraces: Allman
-AllowShortIfStatementsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
-AllowShortFunctionsOnASingleLine: Empty
-AllowShortBlocksOnASingleLine: Never
+AllowShortBlocksOnASingleLine: Empty
+AllowShortLambdasOnASingleLine: All
 
-# Includes
-SortIncludes: true
-IncludeBlocks: Regroup
+# Pointers and references - left aligned (modern C++ style)
+PointerAlignment: Left
+ReferenceAlignment: Left
+DerivePointerAlignment: false
 
-# # Spacing
-SpaceAfterCStyleCast: false
+# Spacing
 SpaceBeforeParens: ControlStatements
 SpacesInParentheses: false
+SpaceAfterCStyleCast: false
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCpp11BracedList: false
+SpacesBeforeTrailingComments: 2
 
-# # Alignment
-AlignConsecutiveAssignments: false
-AlignConsecutiveDeclarations: false
-AlignOperands: true
+# Alignment
+AlignConsecutiveAssignments: None
+AlignConsecutiveDeclarations: None
+AlignOperands: Align
+AlignAfterOpenBracket: Align
+AlignTrailingComments: true
 
-# # Modern C++ features
+# Include sorting and grouping
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex:           '^<.*\.h>'
+    Priority:        1
+  - Regex:           '^<.*>'
+    Priority:        2
+  - Regex:           '.*'
+    Priority:        3
+
+# Modern C++ features
+Standard: c++20
 Cpp11BracedListStyle: true
-# Standard: c++23
+FixNamespaceComments: true
+NamespaceIndentation: None
+
+# Breaking
+AlwaysBreakAfterReturnType: None
+AlwaysBreakTemplateDeclarations: Yes
+BinPackArguments: true
+BinPackParameters: true
+BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: true
+BreakConstructorInitializers: BeforeColon
+BreakInheritanceList: BeforeColon
+
+# Misc
+IndentCaseLabels: true
+IndentPPDirectives: None
+MaxEmptyLinesToKeep: 1
+ReflowComments: true
+SortUsingDeclarations: true
+AccessModifierOffset: -4

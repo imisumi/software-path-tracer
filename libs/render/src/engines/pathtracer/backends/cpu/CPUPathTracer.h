@@ -4,19 +4,19 @@
 #include <vector>
 #include <memory>
 #include <glm/glm.hpp>
+#include <queue>
 
 // Forward declarations for Embree types (avoid including heavy headers in public interface)
 
 // Forward declarations
 class Scene;
-class OSLRenderer;
 
 typedef struct RTCDeviceTy *RTCDevice;
 typedef struct RTCSceneTy *RTCScene;
+typedef struct RTCRayHit RTCRayHit;
 
 namespace render
 {
-
 	/// CPU-based path tracing implementation using Embree for acceleration
 	/// Clean, modern API for progressive path tracing
 	class CPUPathTracer : public PathTracer
@@ -45,17 +45,39 @@ namespace render
 		bool initialize_embree();
 		void cleanup_embree();
 
+		// Ray tracing pipeline
 		uint32_t get_rng_state(uint32_t width, uint32_t height, uint32_t x, uint32_t y, uint32_t frame) const;
+		glm::vec3 generate_camera_ray(uint32_t x, uint32_t y, uint32_t width, uint32_t height) const;
 		glm::vec4 trace_ray(const glm::vec3 &ray_origin, const glm::vec3 &ray_direction, uint32_t &rng_state) const;
+		bool intersect_scene(const glm::vec3 &origin, const glm::vec3 &direction, RTCRayHit &rayhit) const;
 
+		// Material/Shading
+		glm::vec3 get_albedo(const RTCRayHit &rayhit) const;
+
+		// BSDF
+		glm::vec3 sample_bsdf(const glm::vec3 &albedo, const glm::vec3 &normal,
+		                      const glm::vec3 &wo, uint32_t &rng_state, float &pdf_out) const;
+		glm::vec3 evaluate_bsdf(const glm::vec3 &albedo, const glm::vec3 &normal,
+		                        const glm::vec3 &wi, const glm::vec3 &wo) const;
+
+		// Sampling helpers
+		glm::vec3 sample_hemisphere_cosine(const glm::vec3 &normal, uint32_t &rng_state, float &pdf_out) const;
+
+		// Environment/Sky
 		glm::vec3 sample_sky(const glm::vec3 &direction) const;
 
+		// Utility
 		float random_float(uint32_t &state) const;
-		glm::vec3 get_random_bounche(const glm::vec3 &normal, uint32_t &state) const;
 
 		void rebuild_scene();
 
 	private:
+		// Rendering constants
+		static constexpr int MAX_BOUNCES = 4;
+		static constexpr int RUSSIAN_ROULETTE_START_BOUNCE = 2;
+		static constexpr float RAY_EPSILON = 1e-4f;
+		static constexpr float RAY_TNEAR = 0.001f;
+		static constexpr uint32_t RNG_PRIME = 982451653U;
 
 		// Embree device and scene management
 		RTCDevice m_embreeDevice = nullptr;
@@ -74,7 +96,20 @@ namespace render
 		std::shared_ptr<RenderSettings> m_renderSettings;
 		bool m_outputDirty = true;
 
-		std::unique_ptr<OSLRenderer> m_oslRenderer;
+
+		// threading
+		struct RenderTile
+		{
+			uint32_t x_start;
+			uint32_t y_start;
+			uint32_t x_end;
+			uint32_t y_end;
+		};
+
+		static constexpr int TILE_SIZE = 32;
+		std::vector<RenderTile> m_tiles;
+
+		void create_tiles(uint32_t width, uint32_t height);
 	};
 
 }
